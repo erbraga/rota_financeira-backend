@@ -52,16 +52,18 @@ docker run -d --name rota-financeira-db -e POSTGRES_USER -e POSTGRES_PASSWORD -e
 (a senha vem do `.env` local, que não é versionado)
 
 ## Etapa 1 — Esqueleto da aplicação Flask + PostgreSQL
-**Arquivos:** `run.py`, `config.py`, `app/__init__.py`, `app/extensions.py`, `app/routes/__init__.py`
+**Status: concluída em 2026-09-25** (spec: `docs/specs/2026-09-25-esqueleto-aplicacao-flask.md`).
+**Arquivos:** `run.py`, `config.py`, `app/__init__.py`, `app/extensions.py`, `app/errors.py`, `app/routes/__init__.py`, `app/routes/saude.py`, `migrations/`
 
-- [ ] `config.py` lendo as variáveis de ambiente (nunca segredos no código).
-- [ ] `app/extensions.py` com `db`, `migrate`, `jwt` (instâncias únicas, evitam import circular).
-- [ ] Application factory `create_app()` registrando db, migrate, JWT, CORS (só `CORS_ORIGINS`) e Flasgger com a definição de segurança `Bearer`.
-- [ ] Um handler global de erros devolvendo JSON (404, 405, 500 etc.).
-- [ ] Uma rota mínima (ex.: `GET /api/saude`) documentada no Swagger, para provar o pipeline.
-- [ ] `flask db init` gerando `migrations/`.
+- [x] `config.py` lendo as variáveis de ambiente (obrigatórias falham com mensagem clara; chave JWT de exemplo ou curta é recusada; sem segredos no código).
+- [x] `app/extensions.py` com `db`, `migrate`, `jwt` (instâncias únicas, evitam import circular).
+- [x] Application factory `create_app(config=None)` registrando db, migrate, JWT, CORS (só `CORS_ORIGINS`) e Flasgger em **OpenAPI 3.0.2** com `BearerAuth`.
+- [x] Handlers globais de erro em JSON `{"erro": ..., "detalhes": ...}` (404, 405, 500 etc.), sem stack trace.
+- [x] `GET /api/saude` (pública, consulta o banco com `SELECT 1`; 503 se o banco cair) documentada no Swagger.
+- [x] `flask db init` gerando `migrations/` (versionada; a pasta `versions/` só passa a ser rastreada com a primeira migration, na Etapa 2).
 
-**Validar:** `flask run` sobe; `/apidocs/` abre com o botão *Authorize*; a rota de saúde responde 200.
+**Validado:** `flask run`, `python run.py` e `gunicorn run:app` sobem; `/api/saude` responde 200 e 503 (banco parado) e volta a 200 sem reiniciar; erros em JSON; CORS por origem; `/apidocs/` e o *Authorize* (só o token) conferidos no navegador.
+**Pendência levada adiante:** os erros 401 do Flask-JWT-Extended ainda saem como `{"msg": ...}`; padronizar na Etapa 3.
 
 ## Etapa 2 — Modelagem de dados e migration inicial
 **Arquivos:** `app/models/{usuario,simulacao,opcao_financiamento,parcela_calculada,indice_economico_cache}.py`, `app/models/__init__.py`
