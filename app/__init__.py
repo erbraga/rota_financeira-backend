@@ -116,6 +116,97 @@ SWAGGER_TEMPLATE = {
                     "email": {"type": "string", "format": "email", "example": "ana@exemplo.com"},
                 },
             },
+            "SimulacaoRequisicao": {
+                "type": "object",
+                "required": [
+                    "nome",
+                    "valor_veiculo",
+                    "taxa_ipca_projetada",
+                    "taxa_fundo_rendimento",
+                    "prazo_meses_fundo",
+                ],
+                "description": (
+                    "Corpo do POST e do PUT (o PUT substitui todos os campos: se "
+                    "valor_entrada for omitido, volta a 0). Taxas em percentual "
+                    "(12.5 = 12,5%). Aceita número ou texto numérico."
+                ),
+                "properties": {
+                    "nome": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 120,
+                        "example": "Onix 2026",
+                    },
+                    "valor_veiculo": {
+                        "type": "number",
+                        "minimum": 0.01,
+                        "maximum": 9999999,
+                        "description": "Em reais, até 2 casas decimais (de 0,01 a 9.999.999,00).",
+                        "example": 95000,
+                    },
+                    "valor_entrada": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 9999999,
+                        "default": 0,
+                        "description": (
+                            "Em reais, até 2 casas decimais; não pode passar do valor "
+                            "do veículo (igual é aceito). Opcional, padrão 0."
+                        ),
+                        "example": 20000,
+                    },
+                    "taxa_ipca_projetada": {
+                        "type": "number",
+                        "minimum": -20,
+                        "maximum": 100,
+                        "description": "IPCA projetado, % ao ano, até 6 casas decimais (pode ser negativo).",
+                        "example": 4.5,
+                    },
+                    "taxa_fundo_rendimento": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 100,
+                        "description": "Rendimento do fundo, % ao ano, até 6 casas decimais.",
+                        "example": 10.5,
+                    },
+                    "prazo_meses_fundo": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 60,
+                        "description": "Prazo para acumular, em meses (número inteiro).",
+                        "example": 36,
+                    },
+                },
+            },
+            "Simulacao": {
+                "type": "object",
+                "description": "Os campos da requisição mais `id` e `criado_em` (números como número JSON).",
+                "properties": {
+                    "id": {"type": "integer", "example": 1},
+                    "nome": {"type": "string", "example": "Onix 2026"},
+                    "valor_veiculo": {"type": "number", "example": 95000.0},
+                    "valor_entrada": {"type": "number", "example": 20000.0},
+                    "taxa_ipca_projetada": {"type": "number", "example": 4.5},
+                    "taxa_fundo_rendimento": {"type": "number", "example": 10.5},
+                    "prazo_meses_fundo": {"type": "integer", "example": 36},
+                    "criado_em": {
+                        "type": "string",
+                        "format": "date-time",
+                        "example": "2026-09-25T21:00:00+00:00",
+                    },
+                },
+            },
+            "SimulacaoLista": {
+                "type": "object",
+                "description": "Simulações do usuário, da mais recente para a mais antiga.",
+                "properties": {
+                    "itens": {
+                        "type": "array",
+                        "items": {"$ref": "#/components/schemas/Simulacao"},
+                    },
+                    "total": {"type": "integer", "example": 1},
+                },
+            },
             "LoginResposta": {
                 "type": "object",
                 "properties": {

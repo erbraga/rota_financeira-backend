@@ -94,23 +94,26 @@ docker run -d --name rota-financeira-db -e POSTGRES_USER -e POSTGRES_PASSWORD -e
 **Levado adiante:** Etapas 4 e 5 usam `usuario_atual()` e `carregar(Schema())`; débito de *rate limiting* e 401 do login x frontend registrados no `CLAUDE.md`.
 
 ## Etapa 4 — CRUD de simulações
-**Arquivos:** `app/routes/simulacoes.py`, `app/schemas/simulacao.py`
+**Status: concluída em 2026-09-25** (spec: `docs/specs/2026-09-25-crud-simulacoes.md`).
+**Arquivos:** `app/routes/simulacoes.py`, `app/schemas/{base,simulacao}.py`, `app/services/simulacoes.py`, `app/__init__.py`
 
-- [ ] `POST /api/simulacoes`, `GET /api/simulacoes`, `GET /api/simulacoes/<id>`, `PUT /api/simulacoes/<id>`, `DELETE /api/simulacoes/<id>`.
-- [ ] `usuario_id` sempre vem do token (`usuario_atual()`, Etapa 3), nunca do corpo da requisição; o corpo é lido com `carregar(Schema())` (422 com `detalhes`).
-- [ ] Simulação de outro usuário responde **404**.
-- [ ] Validação de entrada: valores positivos, entrada menor ou igual ao valor do veículo, prazos inteiros positivos, taxas coerentes.
-- [ ] Docstrings Flasgger (OpenAPI 3) com `security: BearerAuth`, exemplo de corpo e códigos de resposta (modelo: `app/routes/auth.py`).
+- [x] `POST` (201 + `Location`), `GET` lista (`{"itens", "total"}`, mais recentes primeiro), `GET` por id, `PUT` (**substituição total**, sem `PATCH`) e `DELETE` (**204 sem corpo**) em `/api/simulacoes` — cobre POST/GET/PUT/DELETE do **R1**.
+- [x] `usuario_id` sempre do token; corpo lido com `carregar(Schema())`; campos desconhecidos (`id`, `usuario_id`, `criado_em`) recusados (422).
+- [x] Simulação de outro usuário responde **404** igual à inexistente (uma consulta por `id` e `usuario_id`); ids fora do `INTEGER` também dão 404 (tratado no serviço).
+- [x] Validação: veículo 0,01 a 9.999.999,00; entrada 0 a `valor_veiculo` (igual aceito); IPCA −20 a 100; fundo 0 a 100; prazo inteiro de 1 a 60; casas em excesso **rejeitadas** (2 no dinheiro, 6 nas taxas); números como **número JSON** na saída.
+- [x] Docstrings OpenAPI 3 nas 5 rotas; schemas `SimulacaoRequisicao`, `Simulacao` e `SimulacaoLista` no Swagger.
 
-**Validar:** pelo Swagger, com dois usuários diferentes, confirmar que um não vê nem altera os dados do outro; cobrir os quatro métodos HTTP (R1).
+**Validado:** scripts descartáveis (campos numéricos 66 verificações, schemas 38, serviço 19), ponta a ponta contra o servidor com dois usuários (36 verificações: isolamento, 401 nas 5 rotas, 24 entradas inválidas em POST e PUT, ids inválidos, exclusão com opções) e Swagger UI conferido por você (criar, listar, abrir, editar, erro 422, excluir 204 e 404).
+**Ajuste em relação ao plano:** o teto do id ficou no serviço (`ID_MAXIMO`), não no conversor `int(max=...)`, que fazia `PUT`/`DELETE` responderem 405.
+**Levado adiante:** Etapa 5 reutiliza `obter_simulacao`, `campo_decimal`/`campo_inteiro` e o padrão de isolamento; Etapa 7 devolve números como número JSON; Etapa 9 mantém o envelope `itens`/`total`.
 
 ## Etapa 5 — CRUD de opções de financiamento
 **Arquivos:** `app/routes/financiamentos.py`, `app/schemas/financiamento.py`
 
 - [ ] `POST|GET /api/simulacoes/<id>/financiamentos` e `PUT|DELETE /api/simulacoes/<id>/financiamentos/<fid>`.
-- [ ] Conferir o dono da simulação em toda operação; a opção precisa pertencer à simulação da URL.
+- [ ] Conferir o dono da simulação em toda operação com `obter_simulacao(usuario, id)` (Etapa 4) e filtrar a opção por `id` **e** `simulacao_id`; a opção precisa pertencer à simulação da URL (404 uniforme).
 - [ ] Regra de negócio: no máximo 3 opções por simulação (a proposta prevê 2 ou 3) — confirmar na spec.
-- [ ] `valor_entrada` da opção pode diferir do da simulação, mas não pode passar de `valor_veiculo` (regra entre tabelas, validada aqui: o banco só confere a entrada da simulação).
+- [ ] `valor_entrada` da opção pode diferir do da simulação, mas não pode passar de `valor_veiculo` (regra entre tabelas, validada aqui: o banco só confere a entrada da simulação). Reutilizar `campo_decimal`/`campo_inteiro` (faixas e casas decimais rejeitadas, como na Etapa 4).
 
 **Validar:** pelo Swagger, incluindo o caso de `fid` que pertence a outra simulação (deve dar 404).
 
@@ -135,7 +138,7 @@ Sem importar Flask; funções puras com `Decimal`.
 
 - [ ] `GET /api/simulacoes/<id>/financiamentos/<fid>/parcelas`: devolve a tabela de amortização calculada sob demanda pelo serviço (não há tabela `parcelas_calculadas`).
 - [ ] `GET /api/simulacoes/<id>/resultado`: monta os três cenários (à vista corrigido, financiamentos, fundo) com totais e as **séries mês a mês** para o gráfico (saldo devedor de cada opção, saldo do fundo, custo à vista corrigido).
-- [ ] Definir o formato exato do JSON e registrá-lo no Swagger — é o contrato com o frontend.
+- [ ] Definir o formato exato do JSON e registrá-lo no Swagger — é o contrato com o frontend. Valores e taxas como **número JSON** (decisão da Etapa 4).
 - [ ] Tratar simulação sem opções de financiamento (devolver os cenários possíveis, sem erro).
 
 **Validar:** simulação de exemplo no Swagger, com os números conferidos à mão ou em planilha.
@@ -155,7 +158,7 @@ Sem importar Flask; funções puras com `Decimal`.
 ## Etapa 9 — Extras de criatividade (R4)
 **Arquivos:** `app/routes/simulacoes.py`, `app/schemas/`, possivelmente `app/services/cet.py`
 
-- [ ] Paginação em `GET /api/simulacoes` (`pagina`, `por_pagina`) com metadados na resposta.
+- [ ] Paginação em `GET /api/simulacoes` (`pagina`, `por_pagina`) com metadados na resposta: **manter o envelope** `{"itens", "total"}` da Etapa 4 e só acrescentar `pagina`, `por_pagina`, `total_paginas`.
 - [ ] Ordenação (`ordenar_por`, `ordem`) e filtros (ex.: por nome, faixa de valor).
 - [ ] Opcional: cálculo do CET (Custo Efetivo Total) por opção de financiamento.
 - [ ] Documentar todos os parâmetros no Swagger.
