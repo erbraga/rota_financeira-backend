@@ -1,4 +1,5 @@
 import os
+from datetime import timedelta
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -8,6 +9,7 @@ load_dotenv(Path(__file__).resolve().parent / ".env")
 
 CHAVE_JWT_EXEMPLO = "troque-esta-chave"
 TAMANHO_MINIMO_CHAVE_JWT = 32
+EXPIRACAO_PADRAO_MINUTOS = 60
 
 
 def _obrigatoria(nome):
@@ -31,6 +33,22 @@ def _chave_jwt():
     return chave
 
 
+def _expiracao_token():
+    valor = os.environ.get("JWT_ACCESS_TOKEN_EXPIRES_MINUTOS", "").strip()
+    if not valor:
+        return timedelta(minutes=EXPIRACAO_PADRAO_MINUTOS)
+    try:
+        minutos = int(valor)
+    except ValueError:
+        minutos = 0
+    if minutos < 1:
+        raise RuntimeError(
+            "JWT_ACCESS_TOKEN_EXPIRES_MINUTOS inválida: informe um número inteiro "
+            f"de minutos maior ou igual a 1 (valor recebido: {valor!r})."
+        )
+    return timedelta(minutes=minutos)
+
+
 def _origens_cors():
     valor = os.environ.get("CORS_ORIGINS", "")
     return [origem.strip() for origem in valor.split(",") if origem.strip()]
@@ -44,5 +62,6 @@ class Config:
         "connect_args": {"connect_timeout": 3},
     }
     JWT_SECRET_KEY = _chave_jwt()
+    JWT_ACCESS_TOKEN_EXPIRES = _expiracao_token()
     CORS_ORIGINS = _origens_cors()
     DEBUG = os.environ.get("FLASK_DEBUG", "0").strip().lower() in ("1", "true", "yes", "on")

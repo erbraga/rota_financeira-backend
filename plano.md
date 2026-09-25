@@ -63,7 +63,7 @@ docker run -d --name rota-financeira-db -e POSTGRES_USER -e POSTGRES_PASSWORD -e
 - [x] `flask db init` gerando `migrations/` (versionada; a pasta `versions/` só passa a ser rastreada com a primeira migration, na Etapa 2).
 
 **Validado:** `flask run`, `python run.py` e `gunicorn run:app` sobem; `/api/saude` responde 200 e 503 (banco parado) e volta a 200 sem reiniciar; erros em JSON; CORS por origem; `/apidocs/` e o *Authorize* (só o token) conferidos no navegador.
-**Pendência levada adiante:** os erros 401 do Flask-JWT-Extended ainda saem como `{"msg": ...}`; padronizar na Etapa 3.
+**Pendência levada adiante:** os erros 401 do Flask-JWT-Extended saíam como `{"msg": ...}` — **resolvido na Etapa 3** (tudo em 401 `{"erro": ...}`).
 
 ## Etapa 2 — Modelagem de dados e migration inicial
 **Status: concluída em 2026-09-25** (spec: `docs/specs/2026-09-25-modelagem-dados-migration-inicial.md`).
@@ -80,24 +80,27 @@ docker run -d --name rota-financeira-db -e POSTGRES_USER -e POSTGRES_PASSWORD -e
 **Obrigações levadas às próximas etapas:** Etapa 3 — normalizar e-mail e mapear `IntegrityError` em 409; Etapa 5 — validar `valor_entrada` da opção ≤ `valor_veiculo` (o banco só confere a entrada da simulação); Etapa 6/7 — amortização sob demanda e decidir o modo "dado o aporte"; Etapa 8 — preencher as taxas do BACEN antes de gravar a simulação.
 
 ## Etapa 3 — Autenticação (registro e login)
-**Arquivos:** `app/routes/auth.py`, `app/schemas/auth.py`, `app/services/auth.py` (se necessário)
+**Status: concluída em 2026-09-25** (spec: `docs/specs/2026-09-25-autenticacao-jwt.md`).
+**Arquivos:** `app/routes/auth.py`, `app/schemas/{__init__,auth}.py`, `app/services/auth.py`, `app/errors.py`, `app/__init__.py`, `config.py`
 
-- [ ] `POST /api/auth/registrar`: valida nome/e-mail/senha, **normaliza o e-mail (minúsculas, sem espaços nas pontas)**, grava só o **hash** da senha, 409 para e-mail duplicado (`IntegrityError` em `uq_usuarios_email`), nunca devolve `senha_hash`.
-- [ ] `POST /api/auth/login`: confere a senha e devolve o token JWT; 401 para credencial inválida (mensagem genérica).
-- [ ] Callbacks do JWT devolvendo JSON para token ausente, inválido ou expirado (401).
-- [ ] Definir a expiração do token.
-- [ ] Docstrings Flasgger nas duas rotas.
+- [x] `POST /api/auth/registrar`: 201 com o usuário (sem token); valida nome/e-mail/senha (8 a 128, sem regras de composição), normaliza o e-mail, grava só o **hash** (scrypt), 409 só para a violação de `uq_usuarios_email` (sem consulta prévia), nunca devolve `senha_hash`.
+- [x] `POST /api/auth/login`: 200 com `access_token`, `token_type`, `expires_in` e `usuario`; 401 "Credenciais inválidas" igual para e-mail inexistente e senha errada (hash fictício iguala o tempo).
+- [x] `GET /api/auth/perfil` (**acréscimo à proposta**): usuário do token; rota protegida real e base do helper `usuario_atual()`.
+- [x] Erros: 422 com `detalhes` por campo (handler global de `ValidationError`), 400/415 para corpo quebrado/não JSON, e **todos os erros do JWT em 401** `{"erro": ...}` com `WWW-Authenticate: Bearer`.
+- [x] Expiração: 60 min por padrão, `JWT_ACCESS_TOKEN_EXPIRES_MINUTOS` configurável; `marshmallow==4.3.1` é a única dependência nova.
+- [x] Docstrings Flasgger (OpenAPI 3) nas 3 rotas; schemas `RegistroRequisicao`, `LoginRequisicao`, `LoginResposta`, `Usuario`, `UsuarioResumo` em `SWAGGER_TEMPLATE`.
 
-**Validar:** registrar → login → colar o token no *Authorize* do Swagger; rota protegida de teste responde 200 com token e 401 sem ele.
+**Validado:** scripts descartáveis (schemas 40 verificações, erros do JWT, serviço), `curl` ponta a ponta (registro, 409, 422/400/415, login, tempos iguais, `perfil` com 8 tipos de token ruim, validade de 300 s com a variável em 5) e Swagger UI conferido por você (registrar, login, *Authorize* só com o token, `perfil` 200/401).
+**Levado adiante:** Etapas 4 e 5 usam `usuario_atual()` e `carregar(Schema())`; débito de *rate limiting* e 401 do login x frontend registrados no `CLAUDE.md`.
 
 ## Etapa 4 — CRUD de simulações
 **Arquivos:** `app/routes/simulacoes.py`, `app/schemas/simulacao.py`
 
 - [ ] `POST /api/simulacoes`, `GET /api/simulacoes`, `GET /api/simulacoes/<id>`, `PUT /api/simulacoes/<id>`, `DELETE /api/simulacoes/<id>`.
-- [ ] `usuario_id` sempre vem do token, nunca do corpo da requisição.
+- [ ] `usuario_id` sempre vem do token (`usuario_atual()`, Etapa 3), nunca do corpo da requisição; o corpo é lido com `carregar(Schema())` (422 com `detalhes`).
 - [ ] Simulação de outro usuário responde **404**.
 - [ ] Validação de entrada: valores positivos, entrada menor ou igual ao valor do veículo, prazos inteiros positivos, taxas coerentes.
-- [ ] Docstrings Flasgger com `security: Bearer`, exemplo de corpo e códigos de resposta.
+- [ ] Docstrings Flasgger (OpenAPI 3) com `security: BearerAuth`, exemplo de corpo e códigos de resposta (modelo: `app/routes/auth.py`).
 
 **Validar:** pelo Swagger, com dois usuários diferentes, confirmar que um não vê nem altera os dados do outro; cobrir os quatro métodos HTTP (R1).
 
