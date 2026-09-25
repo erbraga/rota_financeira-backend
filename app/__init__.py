@@ -2,6 +2,7 @@ from flasgger import Swagger
 from flask import Flask
 from flask_cors import CORS
 
+from app import models  # noqa: F401  (registra os models no metadata para as migrations)
 from app.errors import registrar_handlers
 from app.extensions import db, jwt, migrate
 from app.routes import registrar_blueprints

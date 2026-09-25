@@ -66,19 +66,23 @@ docker run -d --name rota-financeira-db -e POSTGRES_USER -e POSTGRES_PASSWORD -e
 **Pendência levada adiante:** os erros 401 do Flask-JWT-Extended ainda saem como `{"msg": ...}`; padronizar na Etapa 3.
 
 ## Etapa 2 — Modelagem de dados e migration inicial
-**Arquivos:** `app/models/{usuario,simulacao,opcao_financiamento,parcela_calculada,indice_economico_cache}.py`, `app/models/__init__.py`
+**Status: concluída em 2026-09-25** (spec: `docs/specs/2026-09-25-modelagem-dados-migration-inicial.md`).
+**Arquivos:** `app/models/{usuario,simulacao,opcao_financiamento,indice_economico_cache}.py`, `app/models/__init__.py`, `app/extensions.py`, `migrations/versions/df960bba0ba5_modelagem_inicial.py`
 
-- [ ] Models conforme a seção 6 da proposta: `usuarios`, `simulacoes`, `opcoes_financiamento`, `parcelas_calculadas`, `indices_economicos_cache`.
-- [ ] Dinheiro e taxas em `Numeric`; `sistema_amortizacao` como enum (`PRICE`, `SAC`); `email` único; FKs com `ondelete` definido (excluir simulação remove suas opções).
-- [ ] Decidir: `parcelas_calculadas` como tabela de cache ou cálculo sob demanda (a proposta marca como opcional; a recomendação é **sob demanda** no início).
-- [ ] `flask db migrate` + revisão manual do arquivo + `flask db upgrade`.
+- [x] Models da seção 6 da proposta: `usuarios`, `simulacoes`, `opcoes_financiamento`, `indices_economicos_cache` (SQLAlchemy 2.0 tipado, `Identity()`, convenção de nomes de restrições na `Base`).
+- [x] Dinheiro `Numeric(14,2)`; taxas e índices `Numeric(12,6)` em **percentual**; `sistema_amortizacao` e `indice` como `VARCHAR` + CHECK; `email` único; `criado_em` `TIMESTAMPTZ` com `now()`; tudo `NOT NULL`; CHECKs de positividade/limites; unicidade `(indice, data_referencia)` no cache (acréscimo à proposta).
+- [x] **`parcelas_calculadas` NÃO foi criada** (mudança em relação à proposta): a amortização é calculada sob demanda pelos serviços (Etapas 6 e 7).
+- [x] FKs com `ON DELETE RESTRICT`; a cascata `all, delete-orphan` fica no ORM (`db.session.delete(simulacao)` apaga as opções).
+- [x] `flask db migrate` + revisão manual (removida a CHECK de enum duplicada) + `flask db upgrade`.
 
-**Validar:** tabelas criadas no Postgres (`\dt`); `flask db downgrade` e `upgrade` funcionam.
+**Validado:** `\d+` das 4 tabelas conforme a spec; `downgrade base` → `upgrade` sem resíduos; `flask db migrate` sem mudanças; script descartável com 25 verificações (Decimal, fuso, rejeições do banco, `RESTRICT` x cascata do ORM, `db.get_or_404`).
+
+**Obrigações levadas às próximas etapas:** Etapa 3 — normalizar e-mail e mapear `IntegrityError` em 409; Etapa 5 — validar `valor_entrada` da opção ≤ `valor_veiculo` (o banco só confere a entrada da simulação); Etapa 6/7 — amortização sob demanda e decidir o modo "dado o aporte"; Etapa 8 — preencher as taxas do BACEN antes de gravar a simulação.
 
 ## Etapa 3 — Autenticação (registro e login)
 **Arquivos:** `app/routes/auth.py`, `app/schemas/auth.py`, `app/services/auth.py` (se necessário)
 
-- [ ] `POST /api/auth/registrar`: valida nome/e-mail/senha, grava só o **hash** da senha, 409 para e-mail duplicado, nunca devolve `senha_hash`.
+- [ ] `POST /api/auth/registrar`: valida nome/e-mail/senha, **normaliza o e-mail (minúsculas, sem espaços nas pontas)**, grava só o **hash** da senha, 409 para e-mail duplicado (`IntegrityError` em `uq_usuarios_email`), nunca devolve `senha_hash`.
 - [ ] `POST /api/auth/login`: confere a senha e devolve o token JWT; 401 para credencial inválida (mensagem genérica).
 - [ ] Callbacks do JWT devolvendo JSON para token ausente, inválido ou expirado (401).
 - [ ] Definir a expiração do token.
@@ -103,7 +107,7 @@ docker run -d --name rota-financeira-db -e POSTGRES_USER -e POSTGRES_PASSWORD -e
 - [ ] `POST|GET /api/simulacoes/<id>/financiamentos` e `PUT|DELETE /api/simulacoes/<id>/financiamentos/<fid>`.
 - [ ] Conferir o dono da simulação em toda operação; a opção precisa pertencer à simulação da URL.
 - [ ] Regra de negócio: no máximo 3 opções por simulação (a proposta prevê 2 ou 3) — confirmar na spec.
-- [ ] `valor_entrada` da opção pode diferir do da simulação.
+- [ ] `valor_entrada` da opção pode diferir do da simulação, mas não pode passar de `valor_veiculo` (regra entre tabelas, validada aqui: o banco só confere a entrada da simulação).
 
 **Validar:** pelo Swagger, incluindo o caso de `fid` que pertence a outra simulação (deve dar 404).
 
@@ -126,7 +130,7 @@ Sem importar Flask; funções puras com `Decimal`.
 ## Etapa 7 — Tabela de parcelas e endpoint de resultado
 **Arquivos:** `app/routes/financiamentos.py`, `app/routes/simulacoes.py`, `app/schemas/resultado.py`
 
-- [ ] `GET /api/simulacoes/<id>/financiamentos/<fid>/parcelas`: devolve a tabela de amortização calculada sob demanda pelo serviço.
+- [ ] `GET /api/simulacoes/<id>/financiamentos/<fid>/parcelas`: devolve a tabela de amortização calculada sob demanda pelo serviço (não há tabela `parcelas_calculadas`).
 - [ ] `GET /api/simulacoes/<id>/resultado`: monta os três cenários (à vista corrigido, financiamentos, fundo) com totais e as **séries mês a mês** para o gráfico (saldo devedor de cada opção, saldo do fundo, custo à vista corrigido).
 - [ ] Definir o formato exato do JSON e registrá-lo no Swagger — é o contrato com o frontend.
 - [ ] Tratar simulação sem opções de financiamento (devolver os cenários possíveis, sem erro).
@@ -140,7 +144,7 @@ Sem importar Flask; funções puras com `Decimal`.
 - [ ] Gravar em `indices_economicos_cache` e servir por `GET /api/indices/{selic|ipca|cdi}?periodo=...`.
 - [ ] Definir a política de expiração do cache (ex.: consulta o BACEN só se o dado estiver defasado).
 - [ ] BACEN fora do ar: servir o cache; sem cache, devolver 502/503 com mensagem clara.
-- [ ] Os índices são taxas **sugeridas**: o cliente pode enviar outros valores ao criar a simulação.
+- [ ] Os índices são taxas **sugeridas**: o cliente pode enviar outros valores ao criar a simulação; se preferir a sugestão, a API busca no cache e **grava a taxa na simulação** (as colunas são `NOT NULL`).
 - [ ] Opcional: atualização agendada com APScheduler.
 
 **Validar:** chamar o endpoint com rede ativa (grava no cache); repetir (serve do cache); simular falha do BACEN (URL inválida) e conferir a resposta.
@@ -199,7 +203,6 @@ Sem importar Flask; funções puras com `Decimal`.
 - **R7:** o enunciado cita BrasilAPI/FIPE, mas o projeto decidiu atender com o BACEN/SGS — confirmar isso com o professor antes da entrega.
 
 ## Decisões em aberto (resolver nas specs)
-- `parcelas_calculadas` como cache ou sob demanda (etapa 2).
 - Limite de opções por simulação e expiração do JWT (etapas 3 e 5).
 - Convenção de arredondamento e caso de taxa zero (etapa 6).
 - Política de expiração do cache do BACEN (etapa 8).
