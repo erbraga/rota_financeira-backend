@@ -7,3 +7,4 @@ flasgger==0.9.7.1
 psycopg[binary]==3.3.6
 requests==2.34.2
 gunicorn==26.2.0
+python-dotenv==1.2.3

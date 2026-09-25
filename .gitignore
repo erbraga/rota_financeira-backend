@@ -1,12 +1,12 @@
 __pycache__/
 .venv
+.env
+instance/
+.pytest_cache/
+.vscode/
+.idea/
 .claude
-.docs/specs
 CLAUDE.md
-"requisitos back-end.md"
+requisitos back-end.md
 /tmp
 pendencias.md
-plano.md
-proposta-backend-api-rest.md
-requisitos back-end.md
-docs/specs/TEMPLATE.md
