@@ -123,24 +123,26 @@ docker run -d --name rota-financeira-db -e POSTGRES_USER -e POSTGRES_PASSWORD -e
 **Levado adiante:** Etapa 6 — taxa 0 tratada e valor financiado sempre > 0; Etapa 7 — no máximo 216 linhas por simulação (3 opções × 72 meses) e 0 a 3 opções (com 0 opções, só os cenários possíveis); Etapa 12 — README com as rotas de financiamentos.
 
 ## Etapa 6 — Serviços de cálculo + testes unitários
-**Arquivos:** `app/services/{financiamento,fundo,cenarios}.py`, `tests/services/`
+**Status: concluída em 2026-09-25** (spec: `docs/specs/2026-09-25-servicos-de-calculo.md`).
+**Arquivos:** `app/services/calculo/{__init__,base,preco,financiamento,fundo}.py`, `tests/calculo/`, `pytest.ini`, `requirements-dev.txt`
 
-Sem importar Flask; funções puras com `Decimal`.
+Pacote **puro** (só biblioteca padrão; verificado no código-fonte por teste), em `Decimal`, com percentual na entrada.
 
-- [ ] **Preço futuro (IPCA):** `valor_veiculo × (1 + ipca_aa)^(prazo_meses/12)`.
-- [ ] **Price:** parcela fixa `PMT = PV·i / (1 − (1+i)^−n)`, com `PV = valor_veiculo − entrada`; tabela mês a mês (parcela, juros, amortização, saldo).
-- [ ] **SAC:** amortização constante `PV/n`, juros sobre o saldo, parcelas decrescentes.
-- [ ] Custo total do financiamento = entrada + soma das parcelas. Taxa 0 é entrada válida (Etapa 5): tratar sem divisão por zero; o valor financiado é sempre > 0 (entrada da opção < valor do veículo).
-- [ ] **Fundo de acumulação:** taxa mensal `(1+a.a.)^(1/12) − 1`; (a) dado o prazo, calcula o aporte mensal; (b) dado o aporte, calcula em quantos meses atinge o valor à vista corrigido. Série mês a mês do saldo.
-- [ ] Definir a convenção de arredondamento (2 casas, `ROUND_HALF_UP`) e onde aplicá-la.
-- [ ] Decidir e documentar a tratativa de taxa 0 (evita divisão por zero).
-- [ ] Adicionar `pytest` (ou `unittest`) com justificativa, conforme o CLAUDE.md.
+- [x] **Preço corrigido (IPCA):** `valor × (1 + ipca)^(meses/12)` e série mês a mês.
+- [x] **Price** e **SAC:** parcela e juros arredondados ao centavo a cada mês (`ROUND_HALF_UP`), última parcela com o resíduo e **amortização limitada ao saldo** (decisão 8: com parcelas de centavos ou juros extremos o financiamento é quitado antes e as parcelas restantes saem 0,00); custo total = entrada + Σ parcelas; taxa 0 com ramo próprio.
+- [x] **Fundo:** taxa mensal composta, aportes ao fim do mês, `valor_entrada` da simulação como **capital inicial**, saldo sem arredondar no meio e aporte arredondado **para cima**; `aporte_para_meta`, `serie_fundo` e `meses_para_meta` (modo "dado o aporte", horizonte 60).
+- [x] `pytest` 9.1.1 em `requirements-dev.txt` (fora do `requirements.txt`).
+- [x] **Não entrou aqui:** a composição dos três cenários (`cenarios`), que vai para a Etapa 7 junto do contrato JSON.
 
-**Validar (`pytest`):** soma das amortizações = valor financiado; saldo final = 0; SAC tem parcelas decrescentes e Price tem parcelas iguais; fundo com aporte calculado chega ao valor-alvo; caso com taxa zero.
+**Validado:** 511 testes em ~1,4 s — valores conhecidos (8.884,88; 1.120,00/1.010,00; 2.593,66 e 1.948,07; 108.410,78), propriedades parametrizadas com referência independente (`Fraction`/centavos inteiros e fórmula fechada em 80 dígitos), aporte mínimo (um centavo a menos não atinge a meta), bordas (taxa 0, prazo 1, valor 0,01, extremos da API, meta inalcançável), pureza, contexto do `Decimal` e desempenho (pior caso < 100 ms). Regressão das Etapas 1 a 5 verde.
+**Decisões novas na implementação:** 8 (trava da amortização no saldo) e 9 (pureza verificada no código-fonte, porque importar `app.services.calculo` executa `app/__init__.py`).
 
 ## Etapa 7 — Tabela de parcelas e endpoint de resultado
-**Arquivos:** `app/routes/financiamentos.py`, `app/routes/simulacoes.py`, `app/schemas/resultado.py`
+**Arquivos:** `app/routes/financiamentos.py`, `app/routes/simulacoes.py`, `app/schemas/resultado.py`, `app/services/calculo/cenarios.py`
 
+- [ ] Criar a composição dos três cenários (`cenarios`) sobre os blocos da Etapa 6 (`preco`, `financiamento`, `fundo`); o `valor_entrada` da simulação é o capital inicial do fundo e a meta é `preco_corrigido(valor_veiculo, ipca, prazo_meses_fundo)`. Converter os valores do banco para `Decimal` sem passar por `float`.
+- [ ] Expor o modo "dado o aporte" (ex.: `GET .../resultado?aporte_mensal=...` com `fundo.meses_para_meta`, horizonte 60; `None` → "não alcança em 60 meses").
+- [ ] Documentar no Swagger que a última parcela pode diferir por centavos (e, com juros extremos, bem mais) e que parcelas após uma quitação antecipada por arredondamento saem 0,00.
 - [ ] `GET /api/simulacoes/<id>/financiamentos/<fid>/parcelas`: devolve a tabela de amortização calculada sob demanda pelo serviço (não há tabela `parcelas_calculadas`).
 - [ ] `GET /api/simulacoes/<id>/resultado`: monta os três cenários (à vista corrigido, financiamentos, fundo) com totais e as **séries mês a mês** para o gráfico (saldo devedor de cada opção, saldo do fundo, custo à vista corrigido).
 - [ ] Definir o formato exato do JSON e registrá-lo no Swagger — é o contrato com o frontend. Valores e taxas como **número JSON** (decisão da Etapa 4).
@@ -174,7 +176,7 @@ Sem importar Flask; funções puras com `Decimal`.
 **Arquivos:** todas as rotas, `tests/api/`
 
 - [ ] Revisar as docstrings Flasgger de **todas** as rotas: parâmetros, corpos de exemplo, respostas de erro, `security`.
-- [ ] Testes de integração com o `test_client` do Flask e banco de teste separado: fluxo registrar → login → criar simulação → adicionar financiamentos → resultado; isolamento entre usuários; erros 401/404/409.
+- [ ] Testes de integração com o `test_client` do Flask e banco de teste separado, no mesmo `pytest` da Etapa 6 (`requirements-dev.txt`, `pytest.ini`): fluxo registrar → login → criar simulação → adicionar financiamentos → resultado; isolamento entre usuários; erros 401/404/409.
 - [ ] Conferir a política de CORS com a origem do frontend.
 
 **Validar:** `pytest` completo verde; percorrer `/apidocs/` executando cada rota.
@@ -182,7 +184,7 @@ Sem importar Flask; funções puras com `Decimal`.
 ## Etapa 11 — Dockerfile (R3)
 **Arquivos:** `Dockerfile`, `.dockerignore`, `docker-compose.yml` (se decidido)
 
-- [ ] `Dockerfile` do backend: imagem Python slim, instala `requirements.txt`, roda com `gunicorn`, expõe a porta e lê a configuração por variáveis de ambiente.
+- [ ] `Dockerfile` do backend: imagem Python slim, instala **só** `requirements.txt` (o `pytest` fica em `requirements-dev.txt`), roda com `gunicorn`, expõe a porta e lê a configuração por variáveis de ambiente.
 - [ ] Se for usar compose: serviços `api` + `db` (Postgres) com volume e `depends_on`.
 - [ ] Definir como as migrations rodam no container (`flask db upgrade` no start).
 
