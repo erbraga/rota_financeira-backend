@@ -1,7 +1,7 @@
 # Revisão final e entrega (Etapa 13) — Spec
 
 **Criado em:** 2026-09-26
-**Status:** Em implementação (2026-09-26) — Tarefas 1 a 7 concluídas; faltam o commit e o *push* (Tarefa 8, do autor) e a verificação a partir do GitHub (Tarefa 9)
+**Status:** Implementada (2026-09-26) — verificada a partir do GitHub (clone anônimo do commit `6f106b0`, README seguido do zero, local e Docker)
 **Origem:** Etapa 13 de `plano.md`; requisito R10 (repositório público por módulo, estrutura clara, nomes seguindo boas práticas) e a conferência do checklist R1 a R10
 
 ## Problema
@@ -118,7 +118,7 @@ executada de novo (rotas × Swagger, `pytest` completo, `docker build`, links do
 - [x] O **checklist R1 a R10** está conferido **de novo**, com evidência executada nesta etapa (16 rotas × Swagger, `pytest` completo, `docker build`,
       README seguido do zero), e registrado no `plano.md` e no `CLAUDE.md`; **nenhum requisito fica com pendência** (o R7 e o R10
       estão atendidos).
-- [ ] **R10 — backend:** o repositório do backend está **público** (verificado por acesso anônimo, no fim); o repositório do frontend fica fora do
+- [x] **R10 — backend:** o repositório do backend está **público** (verificado por acesso anônimo, no fim); o repositório do frontend fica fora do
       escopo (decisão do autor).
 - [x] **Estrutura e nomes:** a árvore confere com a proposta (seção 8.1) e todo arquivo Python está em `snake_case`; nada de arquivo estranho na
       árvore versionada (`tmp/` e afins seguem fora).
@@ -126,7 +126,7 @@ executada de novo (rotas × Swagger, `pytest` completo, `docker build`, links do
       o `proposta-backend-api-rest.md` tratado conforme a decisão 2.
 - [x] **Segredos:** nenhum segredo no repositório nem em nenhum commit (busca no histórico repetida no estado final), `.env.example` e
       `.env.docker.example` só com marcadores.
-- [ ] **Entrega verificável:** depois do *push*, um `git clone` **anônimo** do repositório público, numa pasta nova, segue o README (instalação local e
+- [x] **Entrega verificável:** depois do *push*, um `git clone` **anônimo** do repositório público, numa pasta nova, segue o README (instalação local e
       `docker build`) e passa `pytest -m "not integracao"`; a `main` local e a remota estão iguais e a árvore está limpa; o hash do commit
       final da `main` (a versão entregue) está registrado no `plano.md`.
 - [x] `pytest` completo continua verde (1055 testes); `flask db migrate` sem mudanças; `requirements*.txt` inalterados (nenhuma dependência nova).

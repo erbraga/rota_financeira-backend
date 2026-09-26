@@ -233,7 +233,7 @@ Pacote **puro** (só biblioteca padrão; verificado no código-fonte por teste),
 | R10 | atendido | backend público, estrutura e nomes conferidos; repositório do frontend fora do escopo |
 
 **Validado:** 1055 testes, `flask db migrate` sem mudanças, `pip check`, `requirements*` inalterados; a varredura de segredos no histórico e na árvore.
-**Achado corrigido:** uma string de exemplo de um teste (`tests/api/test_openapi.py`) e as senhas fictícias de usuários dos testes coincidiam com a **senha de desenvolvimento do banco** (3 caracteres, publicada no commit da Etapa 10). Os testes passaram a usar valores neutros (varredura da senha como palavra isolada: 0 ocorrências) e a senha do PostgreSQL local **deve ser trocada pelo autor** (o valor antigo continua no histórico público do git; ao ser trocada, deixa de valer). Lição: a varredura de segredos inclui a senha de desenvolvimento, mesmo curta.
+**Achado corrigido:** uma string de exemplo de um teste (`tests/api/test_openapi.py`) e as senhas fictícias de usuários dos testes coincidiam com a **senha de desenvolvimento do banco** (3 caracteres, publicada no commit da Etapa 10). Os testes passaram a usar valores neutros (varredura da senha como palavra isolada: 0 ocorrências) e a senha do PostgreSQL local **foi trocada pelo autor** (verificado: a nova conecta e a antiga é recusada); o valor antigo continua no histórico público do git, mas deixou de valer. Lição: a varredura de segredos inclui a senha de desenvolvimento, mesmo curta.
 
 ---
 
