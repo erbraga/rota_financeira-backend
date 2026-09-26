@@ -1,0 +1,70 @@
+// Fluxograma da arquitetura do Rota Financeira (README, requisito R2).
+// Cenário ilustrado: o usuário compara como comprar um carro (passos numerados de 1 a 5).
+//
+// Para regenerar as imagens (Graphviz), a partir da pasta docs/img:
+//   dot -Tpng -Gdpi=100 arquitetura.dot -o arquitetura.png
+//   dot -Tsvg arquitetura.dot -o arquitetura.svg
+digraph arquitetura {
+    charset="UTF-8";
+    rankdir=TB;
+    bgcolor="white";
+    pad=0.4;
+    nodesep=0.6;
+    ranksep=0.9;
+    newrank=true;
+    fontname="DejaVu Sans";
+    labelloc=t;
+    labeljust=l;
+    fontsize=22;
+    label=<<B>Rota Financeira: arquitetura e cenário de uso</B><BR ALIGN="LEFT"/><FONT POINT-SIZE="14">Cenário: o usuário compara como comprar um carro<BR ALIGN="LEFT"/>(à vista, financiado ou à vista no futuro com fundo de investimento)</FONT><BR ALIGN="LEFT"/> <BR ALIGN="LEFT"/>>;
+
+    node [fontname="DejaVu Sans", fontsize=15, shape=box, style="rounded,filled", color="#455A64", fontcolor="#1B1B1B", margin="0.20,0.12"];
+    edge [fontname="DejaVu Sans", fontsize=14, color="#37474F", fontcolor="#1B1B1B", penwidth=1.5];
+
+    usuario [label="Usuário (navegador)", shape=ellipse, fillcolor="#ECEFF1"];
+
+    subgraph cluster_frontend {
+        label="Repositório separado: rota_financeira-frontend"; labeljust=l; fontsize=15;
+        style="rounded,dashed"; color="#7E57C2"; fontcolor="#4527A0";
+        frontend [label="Frontend SPA (React)\nformulário, cartões-resumo e gráficos", fillcolor="#EDE7F6"];
+    }
+
+    subgraph cluster_api {
+        label="Contêiner Docker: API REST (Flask + gunicorn, porta 5000)"; labeljust=l; fontsize=15;
+        style="rounded,filled"; fillcolor="#E3F2FD"; color="#1565C0"; fontcolor="#0D47A1";
+        rotas    [label="routes\nblueprints /api/... e JWT\n(cada usuário só vê os seus dados)", fillcolor="#BBDEFB"];
+        swagger  [label="Swagger UI\n/apidocs/", fillcolor="#FFFFFF", style="rounded,filled,dashed"];
+        schemas  [label="schemas\nvalidação e serialização", fillcolor="#BBDEFB"];
+        servicos [label="services\nsimulações, financiamentos,\nresultado e índices (cache)", fillcolor="#BBDEFB"];
+        calculo  [label="services/calculo\nPrice, SAC e fundo\n(cálculo puro, Decimal)", fillcolor="#BBDEFB"];
+        bacen    [label="integrations/bacen\ncliente HTTP com timeout", fillcolor="#BBDEFB"];
+    }
+
+    subgraph cluster_banco {
+        label="PostgreSQL 18"; labeljust=r; fontsize=15;
+        style="rounded,filled"; fillcolor="#E8F5E9"; color="#2E7D32"; fontcolor="#1B5E20";
+        banco [label="usuarios\nsimulacoes\nopcoes_financiamento\nindices_economicos_cache", shape=cylinder, fillcolor="#C8E6C9"];
+    }
+
+    subgraph cluster_externo {
+        label="API externa (sem cadastro)"; labeljust=l; fontsize=15;
+        style="rounded,filled"; fillcolor="#FFF3E0"; color="#EF6C00"; fontcolor="#E65100";
+        sgs [label="Banco Central do Brasil (SGS)\nsérie 4389: CDI\nsérie 13522: IPCA", fillcolor="#FFE0B2"];
+    }
+
+    usuario  -> frontend [label="  usa a aplicação", color="#78909C", fontcolor="#455A64"];
+    frontend -> rotas    [label=<<B>1</B>  POST /api/auth/login (token JWT)<BR ALIGN="LEFT"/><B>2</B>  GET /api/indices/cdi (taxa sugerida)<BR ALIGN="LEFT"/><B>3</B>  POST /api/simulacoes e /financiamentos<BR ALIGN="LEFT"/><B>4</B>  GET /api/simulacoes/{id}/resultado<BR ALIGN="LEFT"/>>];
+    rotas    -> frontend [label=<<B>5</B>  JSON com totais,<BR/>menor_custo e séries mês a mês>, color="#1565C0", fontcolor="#0D47A1"];
+
+    rotas    -> schemas  [label="valida", style=dashed, color="#78909C", fontcolor="#455A64"];
+    rotas    -> servicos [label="delega", style=dashed, color="#78909C", fontcolor="#455A64"];
+    swagger  -> rotas    [label="documenta", style=dashed, color="#78909C", fontcolor="#455A64"];
+
+    servicos -> calculo  [label=<<B>4</B>  calcula os<BR/>3 cenários>];
+    servicos -> banco    [label=<<B>2a</B>  lê o cache (vale 12 h)<BR ALIGN="LEFT"/><B>3</B>  grava simulações e opções<BR ALIGN="LEFT"/><B>4</B>  lê os dados do cálculo<BR ALIGN="LEFT"/>>];
+    servicos -> bacen    [label=<<B>2b</B>  cache vencido>];
+    bacen    -> sgs      [label=<<B>2b</B>  busca a série<BR ALIGN="LEFT"/>(janela de 60 meses)<BR ALIGN="LEFT"/>>];
+
+    {rank=same; schemas; servicos}
+    {rank=same; calculo; bacen; banco}
+}

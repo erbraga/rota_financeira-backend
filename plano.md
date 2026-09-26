@@ -200,21 +200,24 @@ Pacote **puro** (só biblioteca padrão; verificado no código-fonte por teste),
 **Levado adiante:** Etapa 12 — o README documenta os comandos acima, a criação do `.env.docker` (sem colocar a senha no `.example`), o `docker run` do banco (seção "Banco de dados" do `CLAUDE.md`) e a coexistência com o ambiente local.
 
 ## Etapa 12 — README com fluxograma (R2 e R8)
-**Arquivos:** `README.md`, `docs/img/arquitetura.png` (ou `.svg`)
+**Status: concluída em 2026-09-26** (spec: `docs/specs/2026-09-26-readme-e-fluxograma.md`).
+**Arquivos:** `README.md` (reescrito do zero), `docs/img/arquitetura.dot` (fonte), `docs/img/arquitetura.png`, `docs/img/arquitetura.svg`
 
-- [ ] Reescrever o README (o atual é do projeto `manutencao-api`): título, descrição, instalação local, variáveis de ambiente, migrations, execução, execução com Docker.
-- [ ] **Fluxograma da arquitetura** em imagem, ilustrando um cenário (ex.: Frontend → API Flask → PostgreSQL / BACEN).
-- [ ] Seção da **API externa** (R8): BACEN/SGS, licença, ausência de cadastro e rotas usadas (séries 4389 e 13522; só CDI e IPCA; ver o texto já escrito no Swagger).
-- [ ] Tabela das rotas da API (incluindo simulações, financiamentos, `/parcelas` e `/resultado`), o contrato do resultado (custo total, `menor_custo`, séries e `null`, modo `aporte_mensal`) e link para `/apidocs/`.
+- [x] **README** do Rota Financeira (o antigo era do `manutencao-api`): título e descrição dos 3 cenários, funcionalidades, arquitetura (imagem + legenda dos 5 passos + camadas), tecnologias com versões, instalação e execução local, variáveis de ambiente, execução com Docker, testes, **API externa (R8)**, tabela das 16 rotas com o contrato de `/resultado` e das taxas sugeridas, estrutura de pastas e autoria; links para os dois repositórios.
+- [x] **Fluxograma** (R2) em **Graphviz**: uma imagem só com a arquitetura e o cenário numerado (usuário compara como comprar um carro: login, taxa sugerida via cache/BACEN, simulação, `/resultado`, exibição). Regerar, em `docs/img`: `dot -Tpng -Gdpi=100 arquitetura.dot -o arquitetura.png` e `dot -Tsvg arquitetura.dot -o arquitetura.svg` (saída idêntica à versionada).
+- [x] **API externa (R8):** BACEN/SGS, séries 4389 e 13522, sem cadastro, licença ODbL com a ressalva verificada, consumo pelo backend, cache de 12 h; **bate** com o texto do Swagger.
+- [x] Rotas sem exemplos `curl` (o Swagger é o contrato completo); comandos de Linux/macOS (bash), com WSL ou Docker para Windows (só entra o que foi executado).
 
-**Validar:** seguir o README do zero em uma pasta limpa e conseguir subir a aplicação.
+**Validado:** tabela de rotas × `/apispec.json` (as mesmas 16, com a autenticação), variáveis × `config.py`/`.env.example`/`.env.docker.example` (nenhuma falta ou sobra), versões × `requirements.txt`, links e âncoras, títulos, tabelas e blocos de código; **execução literal do README do zero** numa cópia limpa: caminho local (venv, `pip install`, `.env`, PostgreSQL em contêiner, migrations, `flask run`, fluxo curto com o BACEN real, os 1055 testes) e caminho Docker (build, rede, `.env.docker`, `docker run`, fluxo curto, limpeza que o README ensina); sem segredos no README, no PNG e no SVG; 1055 testes e `flask db migrate` sem mudanças; leitura sua do README e da imagem.
+**Achados corrigidos no texto:** `gunicorn run:app` escuta na porta **8000** (não na 5000); a linha comentada `TEST_DATABASE_URL` do `.env.example` também tem o marcador `troque-esta-senha`.
+**Levado adiante:** Etapa 13 — o repositório do **frontend** (`github.com/erbraga/rota_financeira-frontend`, link do README) respondeu **404 anônimo** em 2026-09-26 (privado ou ainda não publicado): torná-lo **público** e conferir que o link abre (R10).
 
 ## Etapa 13 — Revisão final e entrega (R10)
 - [ ] Conferir o checklist R1 a R10 do `CLAUDE.md` e atualizar a lista.
 - [ ] Nomes de arquivos em `snake_case`, estrutura de pastas conforme a proposta, sem código morto.
 - [ ] Nenhum segredo commitado; `.env.example` atualizado.
 - [ ] Remover do `requirements.txt` o que não for usado; atualizar o `CLAUDE.md` com o estado final.
-- [ ] Publicar no repositório público do GitHub e conferir o link.
+
 
 ---
 
