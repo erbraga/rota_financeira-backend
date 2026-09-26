@@ -138,17 +138,19 @@ Pacote **puro** (só biblioteca padrão; verificado no código-fonte por teste),
 **Decisões novas na implementação:** 8 (trava da amortização no saldo) e 9 (pureza verificada no código-fonte, porque importar `app.services.calculo` executa `app/__init__.py`).
 
 ## Etapa 7 — Tabela de parcelas e endpoint de resultado
-**Arquivos:** `app/routes/financiamentos.py`, `app/routes/simulacoes.py`, `app/schemas/resultado.py`, `app/services/calculo/cenarios.py`
+**Status: concluída em 2026-09-25** (spec: `docs/specs/2026-09-25-parcelas-e-resultado.md`).
+**Arquivos:** `app/services/calculo/cenarios.py`, `app/services/resultados.py`, `app/schemas/resultado.py`, `app/schemas/__init__.py` (`carregar_consulta`), `app/routes/financiamentos.py`, `app/routes/simulacoes.py`, `app/__init__.py`, `tests/calculo/test_cenarios.py`
 
-- [ ] Criar a composição dos três cenários (`cenarios`) sobre os blocos da Etapa 6 (`preco`, `financiamento`, `fundo`); o `valor_entrada` da simulação é o capital inicial do fundo e a meta é `preco_corrigido(valor_veiculo, ipca, prazo_meses_fundo)`. Converter os valores do banco para `Decimal` sem passar por `float`.
-- [ ] Expor o modo "dado o aporte" (ex.: `GET .../resultado?aporte_mensal=...` com `fundo.meses_para_meta`, horizonte 60; `None` → "não alcança em 60 meses").
-- [ ] Documentar no Swagger que a última parcela pode diferir por centavos (e, com juros extremos, bem mais) e que parcelas após uma quitação antecipada por arredondamento saem 0,00.
-- [ ] `GET /api/simulacoes/<id>/financiamentos/<fid>/parcelas`: devolve a tabela de amortização calculada sob demanda pelo serviço (não há tabela `parcelas_calculadas`).
-- [ ] `GET /api/simulacoes/<id>/resultado`: monta os três cenários (à vista corrigido, financiamentos, fundo) com totais e as **séries mês a mês** para o gráfico (saldo devedor de cada opção, saldo do fundo, custo à vista corrigido).
-- [ ] Definir o formato exato do JSON e registrá-lo no Swagger — é o contrato com o frontend. Valores e taxas como **número JSON** (decisão da Etapa 4).
-- [ ] Tratar simulação com 0 a 3 opções de financiamento (devolver os cenários possíveis, sem erro); no máximo 3 opções × 72 meses = 216 linhas de amortização por simulação.
+- [x] **Composição** (`cenarios`, pura): opção de financiamento, fundo nos dois modos, eixo comum, séries e `menor_custo`; `services/resultados.py` lê o banco (só leitura, sem bloqueio) e entrega `Decimal` ao cálculo, sem `float`.
+- [x] `GET .../financiamentos/<fid>/parcelas`: documento `{"financiamento", "parcelas", "totais"}` (uma linha por mês, `saldo_devedor` após o pagamento).
+- [x] `GET .../resultado[?aporte_mensal=]`: `cenarios` (à vista, 0 a 3 financiamentos, fundo), `menor_custo` e `series`. **`custo_total` = o que se paga pelo carro** (à vista = valor; financiamento = entrada + parcelas; fundo = preço corrigido na compra), comparação nominal; `menor_custo` calculado no backend (empate: à vista, financiamentos, fundo).
+- [x] **Séries** em lista de pontos por mês, eixo comum até o maior prazo, `null` onde a série terminou; chave de `saldo_devedor` = id da opção (texto).
+- [x] **Modo `aporte_mensal`:** o aporte informado substitui o calculado, `prazo_meses_fundo` deixa de ser usado, `mes_da_meta` (ou `null`, e então o fundo sai do `menor_custo`), horizonte 60.
+- [x] Swagger: schemas novos e explicações (última parcela ajustada, quitação antecipada, custo total, eixo e `null`, modo aporte). Simulação com 0 a 3 opções tratada.
 
-**Validar:** simulação de exemplo no Swagger, com os números conferidos à mão ou em planilha.
+**Validado:** 44 testes de `cenarios` (exemplo completo, eixo, `null`, modos, desempate, pior caso < 100 ms) e a suíte inteira com 555 testes; scripts descartáveis (schemas 36, adaptador 19); ponta a ponta contra o servidor com dois usuários (55 verificações: números da spec, 61 pontos, `/parcelas`, modo aporte 1500 → mês 46 e 300 → `null`, 9 parâmetros inválidos em 422, sem opções, prazo 72, isolamento, 401, sem cache, pior caso em 18 ms) e Swagger UI conferido por você. Regressão das Etapas 1 a 6 verde.
+**Decisões do plano (não estavam explícitas na spec):** no modo aporte sem alcançar, `saldo_final`/`total_aportado`/`rendimento` são os do mês 60; `prazo_meses` do fundo = meses **simulados**; parâmetro desconhecido, vazio ou repetido → 422.
+**Levado adiante:** Etapa 8 — as taxas sugeridas do BACEN alimentam o **formulário**/criação da simulação (o `/resultado` sempre usa as taxas gravadas); Etapa 10 — testes de integração das duas rotas no `pytest`; Etapa 12 — rotas e contrato do resultado no README.
 
 ## Etapa 8 — Integração com o BACEN/SGS, cache e índices
 **Arquivos:** `app/integrations/bacen.py`, `app/services/indices.py`, `app/routes/indices.py`
@@ -176,7 +178,7 @@ Pacote **puro** (só biblioteca padrão; verificado no código-fonte por teste),
 **Arquivos:** todas as rotas, `tests/api/`
 
 - [ ] Revisar as docstrings Flasgger de **todas** as rotas: parâmetros, corpos de exemplo, respostas de erro, `security`.
-- [ ] Testes de integração com o `test_client` do Flask e banco de teste separado, no mesmo `pytest` da Etapa 6 (`requirements-dev.txt`, `pytest.ini`): fluxo registrar → login → criar simulação → adicionar financiamentos → resultado; isolamento entre usuários; erros 401/404/409.
+- [ ] Testes de integração com o `test_client` do Flask e banco de teste separado, no mesmo `pytest` da Etapa 6 (`requirements-dev.txt`, `pytest.ini`), incluindo `/parcelas` e `/resultado` (números do exemplo da spec da Etapa 7, séries com `null`, modo `aporte_mensal`): fluxo registrar → login → criar simulação → adicionar financiamentos → resultado; isolamento entre usuários; erros 401/404/409.
 - [ ] Conferir a política de CORS com a origem do frontend.
 
 **Validar:** `pytest` completo verde; percorrer `/apidocs/` executando cada rota.
@@ -196,7 +198,7 @@ Pacote **puro** (só biblioteca padrão; verificado no código-fonte por teste),
 - [ ] Reescrever o README (o atual é do projeto `manutencao-api`): título, descrição, instalação local, variáveis de ambiente, migrations, execução, execução com Docker.
 - [ ] **Fluxograma da arquitetura** em imagem, ilustrando um cenário (ex.: Frontend → API Flask → PostgreSQL / BACEN).
 - [ ] Seção da **API externa** (R8): BACEN/SGS, licença, ausência de cadastro e rotas usadas.
-- [ ] Tabela das rotas da API (incluindo simulações e financiamentos) e link para `/apidocs/`.
+- [ ] Tabela das rotas da API (incluindo simulações, financiamentos, `/parcelas` e `/resultado`), o contrato do resultado (custo total, `menor_custo`, séries e `null`, modo `aporte_mensal`) e link para `/apidocs/`.
 
 **Validar:** seguir o README do zero em uma pasta limpa e conseguir subir a aplicação.
 

@@ -1,9 +1,15 @@
 from flask import Blueprint, url_for
 from flask_jwt_extended import jwt_required
 
-from app.schemas import carregar
+from app.schemas import carregar, carregar_consulta
+from app.schemas.resultado import (
+    ConsultaResultadoSchema,
+    ResultadoSchema,
+    resultado_para_documento,
+)
 from app.schemas.simulacao import SimulacaoSaidaSchema, SimulacaoSchema
 from app.services.auth import usuario_atual
+from app.services.resultados import resultado_da_simulacao
 from app.services.simulacoes import (
     atualizar_simulacao,
     criar_simulacao,
@@ -274,3 +280,88 @@ def excluir(simulacao_id):
     """
     excluir_simulacao(obter_simulacao(usuario_atual(), simulacao_id))
     return "", 204
+
+
+@bp.get(ID + "/resultado")
+@jwt_required()
+def resultado(simulacao_id):
+    """Compara os três cenários da simulação.
+    ---
+    tags:
+      - Simulações
+    summary: Resultado comparativo (à vista, financiamentos e fundo)
+    description: >-
+      Calculado na hora, sem gravar nada, com os dados atuais da simulação e das opções
+      (0 a 3). Traz os totais de cada cenário, o de menor custo e as séries mês a mês do
+      gráfico; o frontend só exibe. `custo_total` é o que se PAGA PELO CARRO em cada cenário:
+      à vista = valor do veículo; financiamento = entrada da opção + soma das parcelas;
+      fundo = preço corrigido pelo IPCA na compra (no fundo, capital inicial, aportes e
+      rendimento vêm só como informação). A comparação é nominal (sem valor presente). O
+      valor_entrada da simulação é o capital inicial do fundo. As séries são uma lista de
+      pontos, um por mês, num eixo comum do mês 0 ao maior prazo; onde uma série terminou o
+      valor é null (o fundo na compra, o saldo devedor na quitação) e preco_corrigido
+      cobre todo o eixo. Modo aporte_mensal: informe quanto pode guardar por mês e o
+      aporte informado substitui o calculado; o fundo passa a dizer em que mês alcança o
+      preço do carro (mes_da_meta), até 60 meses, e o prazo_meses_fundo da simulação deixa
+      de ser usado. Se não alcançar, mes_da_meta e custo_total do fundo são null e o
+      fundo sai do menor_custo.
+    security:
+      - BearerAuth: []
+    parameters:
+      - name: simulacao_id
+        in: path
+        required: true
+        schema:
+          type: integer
+        example: 1
+      - name: aporte_mensal
+        in: query
+        required: false
+        description: >-
+          Aporte mensal em reais (de 0 a 9.999.999,00, até 2 casas decimais). Omitido, o
+          aporte é calculado para o prazo da simulação.
+        schema:
+          type: number
+          minimum: 0
+          maximum: 9999999
+        example: 1500
+    responses:
+      200:
+        description: Os três cenários, o menor custo e as séries.
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResultadoSimulacao"
+      401:
+        description: Token ausente, inválido ou expirado.
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Erro"
+      404:
+        description: Simulação inexistente ou de outro usuário.
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Erro"
+            example:
+              erro: Simulação não encontrada
+      422:
+        description: Parâmetro inválido (aporte_mensal fora da faixa, com casas em excesso, repetido ou desconhecido).
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Erro"
+            example:
+              erro: Dados inválidos
+              detalhes:
+                aporte_mensal:
+                  - O aporte mensal deve estar entre 0,00 e 9.999.999,00.
+    """
+    usuario = usuario_atual()
+    obter_simulacao(usuario, simulacao_id)  # dono primeiro: o 404 vem antes de qualquer 422
+    consulta = carregar_consulta(ConsultaResultadoSchema())
+    simulacao, resultado_calculado = resultado_da_simulacao(
+        usuario, simulacao_id, consulta["aporte_mensal"]
+    )
+    return ResultadoSchema().dump(resultado_para_documento(simulacao, resultado_calculado))

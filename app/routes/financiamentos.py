@@ -4,6 +4,7 @@ from flask_jwt_extended import jwt_required
 from app.errors import resposta_erro
 from app.schemas import carregar
 from app.schemas.financiamento import FinanciamentoSaidaSchema, FinanciamentoSchema
+from app.schemas.resultado import ParcelasSchema, parcelas_para_documento
 from app.services.auth import usuario_atual
 from app.services.financiamentos import (
     LIMITE_OPCOES,
@@ -14,6 +15,7 @@ from app.services.financiamentos import (
     listar_opcoes,
     obter_opcao,
 )
+from app.services.resultados import parcelas_da_opcao
 from app.services.simulacoes import obter_simulacao
 
 bp = Blueprint("financiamentos", __name__, url_prefix="/api/simulacoes")
@@ -294,3 +296,60 @@ def excluir(simulacao_id, financiamento_id):
     simulacao = obter_simulacao(usuario_atual(), simulacao_id)
     excluir_opcao(obter_opcao(simulacao, financiamento_id))
     return "", 204
+
+
+@bp.get(ITEM + "/parcelas")
+@jwt_required()
+def parcelas(simulacao_id, financiamento_id):
+    """Tabela de amortização de uma opção de financiamento.
+    ---
+    tags:
+      - Financiamentos
+    summary: Tabela de parcelas (amortização) da opção
+    description: >-
+      Calculada na hora, sem gravar nada, a partir do valor do veículo atual da simulação e
+      dos dados da opção (Price ou SAC). Traz o resumo da opção, uma linha por mês do prazo e
+      os totais (total pago, juros e custo total = entrada + parcelas). O saldo devedor de
+      cada linha é o saldo DEPOIS de pagar a parcela. A última parcela absorve o resíduo do
+      arredondamento e pode diferir das demais por centavos (com juros muito altos, bem mais).
+      Com parcelas de centavos ou juros extremos, o financiamento pode ser quitado antes do
+      prazo por arredondamento e as parcelas seguintes saem 0,00.
+    security:
+      - BearerAuth: []
+    parameters:
+      - name: simulacao_id
+        in: path
+        required: true
+        schema:
+          type: integer
+        example: 1
+      - name: financiamento_id
+        in: path
+        required: true
+        schema:
+          type: integer
+        example: 1
+    responses:
+      200:
+        description: A tabela de amortização da opção.
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ParcelasFinanciamento"
+      401:
+        description: Token ausente, inválido ou expirado.
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Erro"
+      404:
+        description: Simulação inexistente ou de outro usuário, ou opção inexistente ou de outra simulação.
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Erro"
+            example:
+              erro: Opção de financiamento não encontrada
+    """
+    financiamento = parcelas_da_opcao(usuario_atual(), simulacao_id, financiamento_id)
+    return ParcelasSchema().dump(parcelas_para_documento(financiamento))
