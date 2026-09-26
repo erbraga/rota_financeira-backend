@@ -170,7 +170,9 @@ def atualizar(simulacao_id):
     summary: Edita uma simulação (substituição total)
     description: >-
       Mesmo corpo do POST: todos os campos obrigatórios devem ser enviados e
-      valor_entrada, se omitido, volta a 0. Não altera id, dono nem criado_em.
+      valor_entrada, se omitido, volta a 0. Não altera id, dono nem criado_em. O valor
+      do veículo não pode ficar menor ou igual à entrada de uma opção de financiamento
+      já cadastrada (422 em valor_veiculo).
     security:
       - BearerAuth: []
     parameters:
@@ -227,7 +229,7 @@ def atualizar(simulacao_id):
               $ref: "#/components/schemas/Erro"
     """
     usuario = usuario_atual()
-    simulacao = obter_simulacao(usuario, simulacao_id)
+    simulacao = obter_simulacao(usuario, simulacao_id, bloquear=True)
     dados = carregar(SimulacaoSchema())
     return SimulacaoSaidaSchema().dump(atualizar_simulacao(simulacao, dados))
 

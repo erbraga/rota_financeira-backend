@@ -15,7 +15,7 @@ class EntradaSchema(Schema):
     }
 
 
-def normalizar_texto(dados, campos, minusculas=()):
+def normalizar_texto(dados, campos, minusculas=(), maiusculas=()):
     if not isinstance(dados, dict):
         return dados
     dados = dict(dados)
@@ -24,6 +24,8 @@ def normalizar_texto(dados, campos, minusculas=()):
             dados[campo] = dados[campo].strip()
             if campo in minusculas:
                 dados[campo] = dados[campo].lower()
+            if campo in maiusculas:
+                dados[campo] = dados[campo].upper()
     return dados
 
 

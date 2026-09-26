@@ -207,6 +207,78 @@ SWAGGER_TEMPLATE = {
                     "total": {"type": "integer", "example": 1},
                 },
             },
+            "FinanciamentoRequisicao": {
+                "type": "object",
+                "required": ["nome", "taxa_juros_mensal", "prazo_meses", "sistema_amortizacao"],
+                "description": (
+                    "Corpo do POST e do PUT de uma opção de financiamento (o PUT substitui "
+                    "todos os campos: se valor_entrada for omitido, volta a 0). Taxa em "
+                    "percentual ao mês (1.99 = 1,99% a.m.). Aceita número ou texto numérico."
+                ),
+                "properties": {
+                    "nome": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 120,
+                        "example": "Banco X 48x",
+                    },
+                    "taxa_juros_mensal": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 20,
+                        "description": "Juros, % ao mês, até 6 casas decimais (0 é aceito).",
+                        "example": 1.99,
+                    },
+                    "prazo_meses": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 72,
+                        "description": "Prazo em meses (número inteiro).",
+                        "example": 48,
+                    },
+                    "sistema_amortizacao": {
+                        "type": "string",
+                        "enum": ["PRICE", "SAC"],
+                        "description": "Aceita qualquer caixa (sac, Price); a resposta vem em maiúsculas.",
+                        "example": "PRICE",
+                    },
+                    "valor_entrada": {
+                        "type": "number",
+                        "minimum": 0,
+                        "maximum": 9999999,
+                        "default": 0,
+                        "description": (
+                            "Em reais, até 2 casas decimais. Precisa ser MENOR que o valor do "
+                            "veículo da simulação (igual não é aceito: não haveria o que "
+                            "financiar). Opcional, padrão 0."
+                        ),
+                        "example": 20000,
+                    },
+                },
+            },
+            "Financiamento": {
+                "type": "object",
+                "description": "Os campos da requisição mais `id` (números como número JSON).",
+                "properties": {
+                    "id": {"type": "integer", "example": 1},
+                    "nome": {"type": "string", "example": "Banco X 48x"},
+                    "taxa_juros_mensal": {"type": "number", "example": 1.99},
+                    "prazo_meses": {"type": "integer", "example": 48},
+                    "sistema_amortizacao": {"type": "string", "enum": ["PRICE", "SAC"], "example": "PRICE"},
+                    "valor_entrada": {"type": "number", "example": 20000.0},
+                },
+            },
+            "FinanciamentoLista": {
+                "type": "object",
+                "description": "Opções da simulação (no máximo 3), em ordem de criação.",
+                "properties": {
+                    "itens": {
+                        "type": "array",
+                        "items": {"$ref": "#/components/schemas/Financiamento"},
+                    },
+                    "total": {"type": "integer", "example": 2},
+                },
+            },
             "LoginResposta": {
                 "type": "object",
                 "properties": {

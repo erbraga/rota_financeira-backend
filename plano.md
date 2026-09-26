@@ -108,14 +108,19 @@ docker run -d --name rota-financeira-db -e POSTGRES_USER -e POSTGRES_PASSWORD -e
 **Levado adiante:** Etapa 5 reutiliza `obter_simulacao`, `campo_decimal`/`campo_inteiro` e o padrão de isolamento; Etapa 7 devolve números como número JSON; Etapa 9 mantém o envelope `itens`/`total`.
 
 ## Etapa 5 — CRUD de opções de financiamento
-**Arquivos:** `app/routes/financiamentos.py`, `app/schemas/financiamento.py`
+**Status: concluída em 2026-09-25** (spec: `docs/specs/2026-09-25-opcoes-financiamento.md`).
+**Arquivos:** `app/routes/financiamentos.py`, `app/schemas/financiamento.py`, `app/services/financiamentos.py`, `app/services/simulacoes.py`, `app/routes/simulacoes.py`, `app/__init__.py`
 
-- [ ] `POST|GET /api/simulacoes/<id>/financiamentos` e `PUT|DELETE /api/simulacoes/<id>/financiamentos/<fid>`.
-- [ ] Conferir o dono da simulação em toda operação com `obter_simulacao(usuario, id)` (Etapa 4) e filtrar a opção por `id` **e** `simulacao_id`; a opção precisa pertencer à simulação da URL (404 uniforme).
-- [ ] Regra de negócio: no máximo 3 opções por simulação (a proposta prevê 2 ou 3) — confirmar na spec.
-- [ ] `valor_entrada` da opção pode diferir do da simulação, mas não pode passar de `valor_veiculo` (regra entre tabelas, validada aqui: o banco só confere a entrada da simulação). Reutilizar `campo_decimal`/`campo_inteiro` (faixas e casas decimais rejeitadas, como na Etapa 4).
+- [x] `POST` (201 + `Location`) e `GET` (envelope `{"itens","total"}`, ordem de criação) em `/api/simulacoes/<id>/financiamentos`; `PUT` (substituição total) e `DELETE` (204) em `.../<fid>`. **Sem** `GET` por `fid`.
+- [x] Dono da simulação verificado primeiro (`obter_simulacao`, 404 "Simulação não encontrada"); a opção é buscada por `id` **e** `simulacao_id` (404 "Opção de financiamento não encontrada"); ids acima do `INTEGER` → 404 no serviço.
+- [x] Campos: `taxa_juros_mensal` de 0 a 20 (% a.m., 6 casas), `prazo_meses` inteiro de 1 a 72, `sistema_amortizacao` `PRICE`/`SAC` em qualquer caixa, `valor_entrada` padrão 0; casas em excesso rejeitadas; números como número JSON.
+- [x] **Máximo de 3 opções** por simulação (4º `POST` → **409**; sem mínimo; excluir libera vaga), com **bloqueio da linha da simulação** (`FOR UPDATE`) contra corrida.
+- [x] `valor_entrada` da opção **estritamente menor** que o `valor_veiculo` da simulação (a da simulação segue aceitando `≤`).
+- [x] **Alteração na Etapa 4:** `PUT /api/simulacoes/<id>` é recusado (422 em `valor_veiculo`, citando a opção) se o novo valor do veículo for menor ou igual à entrada de alguma opção; a rota obtém a simulação com bloqueio.
+- [x] Docstrings OpenAPI 3 nas 4 rotas (com o 409); schemas `FinanciamentoRequisicao`, `Financiamento` e `FinanciamentoLista`.
 
-**Validar:** pelo Swagger, incluindo o caso de `fid` que pertence a outra simulação (deve dar 404).
+**Validado:** scripts descartáveis (schemas 42, serviço 23 com **corrida real** e controle sem bloqueio que falha, coerência 11), ponta a ponta contra o servidor com dois usuários (56 verificações: limite e 2 `POST` simultâneos, isolamento, 401, 28 entradas inválidas em POST e PUT, ids extremos, coerência com a simulação, cascata) e Swagger UI conferido por você. Regressão das Etapas 1 a 4 verde.
+**Levado adiante:** Etapa 6 — taxa 0 tratada e valor financiado sempre > 0; Etapa 7 — no máximo 216 linhas por simulação (3 opções × 72 meses) e 0 a 3 opções (com 0 opções, só os cenários possíveis); Etapa 12 — README com as rotas de financiamentos.
 
 ## Etapa 6 — Serviços de cálculo + testes unitários
 **Arquivos:** `app/services/{financiamento,fundo,cenarios}.py`, `tests/services/`
@@ -125,7 +130,7 @@ Sem importar Flask; funções puras com `Decimal`.
 - [ ] **Preço futuro (IPCA):** `valor_veiculo × (1 + ipca_aa)^(prazo_meses/12)`.
 - [ ] **Price:** parcela fixa `PMT = PV·i / (1 − (1+i)^−n)`, com `PV = valor_veiculo − entrada`; tabela mês a mês (parcela, juros, amortização, saldo).
 - [ ] **SAC:** amortização constante `PV/n`, juros sobre o saldo, parcelas decrescentes.
-- [ ] Custo total do financiamento = entrada + soma das parcelas.
+- [ ] Custo total do financiamento = entrada + soma das parcelas. Taxa 0 é entrada válida (Etapa 5): tratar sem divisão por zero; o valor financiado é sempre > 0 (entrada da opção < valor do veículo).
 - [ ] **Fundo de acumulação:** taxa mensal `(1+a.a.)^(1/12) − 1`; (a) dado o prazo, calcula o aporte mensal; (b) dado o aporte, calcula em quantos meses atinge o valor à vista corrigido. Série mês a mês do saldo.
 - [ ] Definir a convenção de arredondamento (2 casas, `ROUND_HALF_UP`) e onde aplicá-la.
 - [ ] Decidir e documentar a tratativa de taxa 0 (evita divisão por zero).
@@ -139,7 +144,7 @@ Sem importar Flask; funções puras com `Decimal`.
 - [ ] `GET /api/simulacoes/<id>/financiamentos/<fid>/parcelas`: devolve a tabela de amortização calculada sob demanda pelo serviço (não há tabela `parcelas_calculadas`).
 - [ ] `GET /api/simulacoes/<id>/resultado`: monta os três cenários (à vista corrigido, financiamentos, fundo) com totais e as **séries mês a mês** para o gráfico (saldo devedor de cada opção, saldo do fundo, custo à vista corrigido).
 - [ ] Definir o formato exato do JSON e registrá-lo no Swagger — é o contrato com o frontend. Valores e taxas como **número JSON** (decisão da Etapa 4).
-- [ ] Tratar simulação sem opções de financiamento (devolver os cenários possíveis, sem erro).
+- [ ] Tratar simulação com 0 a 3 opções de financiamento (devolver os cenários possíveis, sem erro); no máximo 3 opções × 72 meses = 216 linhas de amortização por simulação.
 
 **Validar:** simulação de exemplo no Swagger, com os números conferidos à mão ou em planilha.
 
@@ -189,7 +194,7 @@ Sem importar Flask; funções puras com `Decimal`.
 - [ ] Reescrever o README (o atual é do projeto `manutencao-api`): título, descrição, instalação local, variáveis de ambiente, migrations, execução, execução com Docker.
 - [ ] **Fluxograma da arquitetura** em imagem, ilustrando um cenário (ex.: Frontend → API Flask → PostgreSQL / BACEN).
 - [ ] Seção da **API externa** (R8): BACEN/SGS, licença, ausência de cadastro e rotas usadas.
-- [ ] Tabela das rotas da API e link para `/apidocs/`.
+- [ ] Tabela das rotas da API (incluindo simulações e financiamentos) e link para `/apidocs/`.
 
 **Validar:** seguir o README do zero em uma pasta limpa e conseguir subir a aplicação.
 
