@@ -1,0 +1,24 @@
+# Fora da imagem: segredos, ambiente local, testes, documentação e caches.
+# A imagem leva só o que a API precisa para rodar (ver o Dockerfile).
+.venv
+.git
+.gitignore
+.env
+.env.*
+__pycache__
+*.pyc
+.pytest_cache
+.vscode
+.idea
+.claude
+CLAUDE.md
+*.md
+tests
+docs
+tmp
+pytest.ini
+requirements-dev.txt
+requisitos back-end.md
+pendencias.md
+Dockerfile
+.dockerignore

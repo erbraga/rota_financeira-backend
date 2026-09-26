@@ -25,7 +25,7 @@ Convenção de status: `[ ]` pendente · `[x]` concluída.
 | 8 | Integração com o BACEN/SGS, cache e endpoints de índices (CDI e IPCA) | R7, R8 |
 | 9 | ~~Extras: paginação, ordenação, filtros (e CET)~~ — **eliminada** (R4 atendido por JWT, `/resultado` e índices) | R4 |
 | 10 | Swagger completo e testes de integração | R1, R5 |
-| 11 | Dockerfile (e docker-compose, se decidido) | R3 |
+| 11 | Dockerfile (sem docker-compose, por decisão do autor) | R3 |
 | 12 | README com fluxograma da arquitetura | R2, R8 |
 | 13 | Revisão final e entrega | R10 |
 
@@ -183,17 +183,21 @@ Pacote **puro** (só biblioteca padrão; verificado no código-fonte por teste),
 
 **Validado:** suíte completa **1055 testes em ~24 s** (636 sem banco + 419 de integração), 3 execuções seguidas e uma com a ordem dos arquivos invertida; **testes de sensibilidade** (mutações em cópia: teto do prazo, limite de opções, dono da simulação, `FOR UPDATE` removido, TTL infinito, datas futuras, arredondamento do Price, +1 centavo no aporte, CORS antigo, 9 mutações de docstring); corrida 20 vezes seguidas verde; banco `emerson` intacto; regressão dos scripts ponta a ponta das Etapas 4 a 8; percurso manual no `/apidocs/` confirmado por você.
 **Decisões do plano (não estavam explícitas na spec):** usuários de teste inseridos direto no banco com o hash da senha em cache (o scrypt real só nos testes de `auth` e no fluxo completo); um único aviso de depreciação ignorado no `pytest.ini` (`get_engine` do `migrations/env.py` gerado pelo Flask-Migrate, débito para o Flask-SQLAlchemy 3.2); padrão de CORS restrito (decisão sua).
-**Levado adiante:** Etapa 11 — imagem com `tzdata`, variáveis do BACEN e de teste, e `bd_test` dentro do compose (se houver); Etapa 12 — README com como rodar a suíte (`pytest`, `-m "not integracao"`, `-m integracao`, `TEST_DATABASE_URL`) e a seção da API externa (R8).
+**Levado adiante:** Etapa 11 — (concluída) imagem com os dados de fuso e as variáveis no `.env.docker`; os testes ficam fora do Docker; Etapa 12 — README com como rodar a suíte (`pytest`, `-m "not integracao"`, `-m integracao`, `TEST_DATABASE_URL`) e a seção da API externa (R8).
 
 ## Etapa 11 — Dockerfile (R3)
-**Arquivos:** `Dockerfile`, `.dockerignore`, `docker-compose.yml` (se decidido)
+**Status: concluída em 2026-09-26** (spec: `docs/specs/2026-09-26-dockerfile.md`).
+**Arquivos:** `Dockerfile`, `.dockerignore`, `docker-entrypoint.sh`, `.env.docker.example`, `.gitignore` (linha `.env.docker`)
 
-- [ ] `Dockerfile` do backend: imagem Python slim, instala **só** `requirements.txt` (o `pytest` fica em `requirements-dev.txt`), roda com `gunicorn`, expõe a porta e lê a configuração por variáveis de ambiente.
-- [ ] Se for usar compose: serviços `api` + `db` (Postgres) com volume e `depends_on`.
-- [ ] Definir como as migrations rodam no container (`flask db upgrade` no start).
-- [ ] Conferir que a imagem tem os dados de fuso (`tzdata`/`zoneinfo` para `America/Sao_Paulo`, usados pelos índices) e documentar as variáveis opcionais do BACEN (`BACEN_URL_BASE`, `BACEN_TIMEOUT_SEGUNDOS`, `INDICES_TTL_HORAS`).
+- [x] **`Dockerfile`** (`python:3.12-slim`, 295 MB): instala **só** o `requirements.txt` (+ `pip check`), copia `app/`, `migrations/`, `config.py`, `run.py` e o *entrypoint*; usuário **não-root** (`app`, uid/gid 10001), `EXPOSE 5000`, `HEALTHCHECK` em Python puro sobre `GET /api/saude` (a imagem não tem `curl`); **nenhum segredo** na imagem (tudo entra por `--env-file`).
+- [x] **Trava de fuso:** um `RUN` que resolve `America/Sao_Paulo` (o `zoneinfo` dos índices); o *build* falha se a base deixar de trazer os dados (provado com um fuso inexistente). Sem o pacote Python `tzdata`.
+- [x] **Migrations:** o `docker-entrypoint.sh` roda `flask db upgrade` a cada partida e depois `exec gunicorn run:app` (`0.0.0.0:5000`, `WEB_CONCURRENCY` = 2, `--timeout 30`, `--no-control-socket`, logs na saída padrão); com argumentos executa o comando pedido **sem migrar** (`flask routes`, `sh`).
+- [x] **Sem `docker-compose.yml`** (decisão do autor): a API alcança o PostgreSQL por `DATABASE_URL`, numa **rede Docker própria** (`rota-financeira-net`) à qual se liga o contêiner do banco (`docker network connect`); variáveis num **`.env.docker`** local (ignorado pelo git e pela imagem), com o `.env.docker.example` versionado. Testes fora do Docker (a imagem é só de produção).
 
-**Validar:** `docker build` e `docker run` (ou `docker compose up`) sobem a API; `/apidocs/` abre; um fluxo completo funciona no container.
+**Comandos** (raiz do projeto): `docker build -t rota-financeira-api .`; `docker network create rota-financeira-net` e `docker network connect rota-financeira-net rota-financeira-db`; `docker run -d --name rota-financeira-api --network rota-financeira-net --env-file .env.docker -p 5000:5000 rota-financeira-api`; `docker logs rota-financeira-api`; para encerrar: `docker rm -f rota-financeira-api`, `docker network disconnect ...`, `docker network rm ...`.
+**Validado:** *build* sem aviso; conteúdo da imagem (sem `tests`, `docs`, `tmp`, `.env*`, `CLAUDE.md`, `pytest`); subida contra um PostgreSQL descartável (migração, `healthy`, `/apidocs/` 200); fluxo completo no contêiner (25 verificações com o **BACEN real**: custos da Etapa 7, índices 4389 e 13522, CORS); falhas (sem `JWT_SECRET_KEY`/`DATABASE_URL` e banco inacessível → saída 1 com mensagem; banco parado → 503 e `unhealthy` sem derrubar o processo; volta a `healthy`); persistência a `stop`/`start` e à recriação; outra porta; roteiro documentado contra o banco de desenvolvimento (somente leitura, depois desfeito) e a suíte de integração verde logo em seguida; sem segredo na imagem (`docker save` e `docker history`); 1055 testes, `flask db migrate` sem mudanças e `requirements*` inalterados; percurso manual seu com o `.env.docker` real.
+**Achados:** o gunicorn 26 abre por padrão um socket de controle em `~/.gunicorn/` e registrava um `ERROR` (o usuário não tem home): desligado com `--no-control-socket`; a mensagem de variável faltando da `config.py` fala em "copiar `.env.example` para `.env`" (dentro do Docker vale o `--env-file`).
+**Levado adiante:** Etapa 12 — o README documenta os comandos acima, a criação do `.env.docker` (sem colocar a senha no `.example`), o `docker run` do banco (seção "Banco de dados" do `CLAUDE.md`) e a coexistência com o ambiente local.
 
 ## Etapa 12 — README com fluxograma (R2 e R8)
 **Arquivos:** `README.md`, `docs/img/arquitetura.png` (ou `.svg`)
@@ -225,4 +229,4 @@ Pacote **puro** (só biblioteca padrão; verificado no código-fonte por teste),
 - Convenção de arredondamento e caso de taxa zero (etapa 6).
 - ~~Política de expiração do cache do BACEN (etapa 8)~~ — resolvida: TTL de 12 h, janela de 60 meses.
 - ~~Escopo de paginação, ordenação e filtros; se o CET entra (etapa 9)~~ — resolvida: nada disso será implementado.
-- Dockerfile isolado ou docker-compose com Postgres (etapa 11).
+- ~~Dockerfile isolado ou docker-compose com Postgres (etapa 11)~~ — resolvida: só o Dockerfile, sem compose.
