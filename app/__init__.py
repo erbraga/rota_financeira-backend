@@ -30,7 +30,24 @@ SWAGGER_TEMPLATE = {
         "version": "0.1.0",
         "description": (
             "API REST do comparador de cenários para compra de carros: "
-            "à vista, financiado e à vista no futuro com fundo de investimento."
+            "à vista, financiado e à vista no futuro com fundo de investimento.\n\n"
+            "### API externa utilizada (R7 e R8)\n"
+            "**Banco Central do Brasil — Séries Temporais (SGS)**, `api.bcb.gov.br`, "
+            "consumida **no backend** (o cliente nunca é redirecionado ao BACEN). Fornece as "
+            "taxas **sugeridas** em `GET /api/indices/cdi` e `GET /api/indices/ipca`.\n\n"
+            "- **Cadastro:** não é necessário (sem chave, token ou login).\n"
+            "- **Licença:** os dados abertos do BCB adotam a *Open Data Commons Open Database "
+            "License (ODbL)* (conforme o catálogo do portal de dados abertos, "
+            "`dadosabertos.bcb.gov.br`). As séries 4389 e 13522 não são listadas "
+            "individualmente nesse catálogo; o uso segue a política de dados abertos do BCB.\n"
+            "- **Rotas utilizadas** (`GET`, com `formato=json`, `dataInicial` e `dataFinal` em "
+            "`dd/mm/aaaa`): `https://api.bcb.gov.br/dados/serie/bcdata.sgs.4389/dados` (CDI "
+            "anualizada, base 252, % a.a.) e "
+            "`https://api.bcb.gov.br/dados/serie/bcdata.sgs.13522/dados` (IPCA acumulado em 12 "
+            "meses, % a.a.).\n"
+            "- **Uso:** as respostas ficam em cache no banco (renovado a cada 12 h, janela de 60 "
+            "meses); se o BACEN estiver fora do ar, a API serve o cache marcado como "
+            "desatualizado."
         ),
     },
     "components": {
@@ -471,6 +488,71 @@ SWAGGER_TEMPLATE = {
                     },
                     "menor_custo": {"$ref": "#/components/schemas/MenorCusto"},
                     "series": {"type": "array", "items": {"$ref": "#/components/schemas/PontoSerie"}},
+                },
+            },
+            "IndiceEconomico": {
+                "type": "object",
+                "description": (
+                    "Série de um índice do BACEN (via SGS, em cache) e a taxa sugerida para o "
+                    "formulário. Valores em % a.a., como publicados (sem conversão)."
+                ),
+                "properties": {
+                    "indice": {"type": "string", "enum": ["CDI", "IPCA"], "example": "CDI"},
+                    "descricao": {"type": "string", "example": "Taxa CDI anualizada, base 252"},
+                    "unidade": {"type": "string", "example": "% a.a."},
+                    "serie_sgs": {
+                        "type": "integer",
+                        "description": "Código da série no SGS (CDI = 4389; IPCA = 13522).",
+                        "example": 4389,
+                    },
+                    "sugestao": {
+                        "type": "object",
+                        "nullable": True,
+                        "description": (
+                            "O valor mais recente até hoje (independe do período): é o número "
+                            "para pré-preencher o campo. Para o IPCA é o acumulado em 12 meses "
+                            "do último mês publicado (o SGS não tem projeção)."
+                        ),
+                        "properties": {
+                            "valor": {"type": "number", "example": 13.65},
+                            "data_referencia": {
+                                "type": "string",
+                                "format": "date",
+                                "description": "Dia (CDI) ou mês, no dia 1 (IPCA), a que o valor se refere.",
+                                "example": "2026-09-24",
+                            },
+                        },
+                    },
+                    "periodo": {
+                        "type": "object",
+                        "properties": {
+                            "inicio": {"type": "string", "format": "date", "example": "2025-09-25"},
+                            "fim": {"type": "string", "format": "date", "example": "2026-09-25"},
+                        },
+                    },
+                    "pontos": {
+                        "type": "array",
+                        "description": "Valores do período, em ordem crescente de data, sem datas futuras.",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "data": {"type": "string", "format": "date", "example": "2026-09-24"},
+                                "valor": {"type": "number", "example": 13.65},
+                            },
+                        },
+                    },
+                    "atualizado_em": {
+                        "type": "string",
+                        "format": "date-time",
+                        "nullable": True,
+                        "description": "Quando o cache deste índice foi renovado pela última vez.",
+                        "example": "2026-09-25T13:00:00+00:00",
+                    },
+                    "desatualizado": {
+                        "type": "boolean",
+                        "description": "Verdadeiro se o BACEN falhou e a resposta veio de um cache mais velho que o TTL.",
+                        "example": False,
+                    },
                 },
             },
             "LoginResposta": {

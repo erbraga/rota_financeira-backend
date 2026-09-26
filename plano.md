@@ -22,8 +22,8 @@ Convenção de status: `[ ]` pendente · `[x]` concluída.
 | 5 | CRUD de opções de financiamento | R1, R5 |
 | 6 | Serviços de cálculo (Price, SAC, fundo) + testes unitários | — |
 | 7 | Tabela de parcelas e endpoint de resultado dos 3 cenários | — |
-| 8 | Integração com o BACEN/SGS, cache e endpoints de índices | R7, R8 |
-| 9 | Extras: paginação, ordenação, filtros (e CET, opcional) | R4 |
+| 8 | Integração com o BACEN/SGS, cache e endpoints de índices (CDI e IPCA) | R7, R8 |
+| 9 | ~~Extras: paginação, ordenação, filtros (e CET)~~ — **eliminada** (R4 atendido por JWT, `/resultado` e índices) | R4 |
 | 10 | Swagger completo e testes de integração | R1, R5 |
 | 11 | Dockerfile (e docker-compose, se decidido) | R3 |
 | 12 | README com fluxograma da arquitetura | R2, R8 |
@@ -77,6 +77,7 @@ docker run -d --name rota-financeira-db -e POSTGRES_USER -e POSTGRES_PASSWORD -e
 
 **Validado:** `\d+` das 4 tabelas conforme a spec; `downgrade base` → `upgrade` sem resíduos; `flask db migrate` sem mudanças; script descartável com 25 verificações (Decimal, fuso, rejeições do banco, `RESTRICT` x cascata do ORM, `db.get_or_404`).
 
+**Nota (Etapa 8):** a ideia de "a API grava a taxa sugerida do BACEN quando a simulação a omite" (decisão 11) foi **descartada**: as taxas continuam obrigatórias e o frontend as pré-preenche a partir de `/api/indices`.
 **Obrigações levadas às próximas etapas:** Etapa 3 — normalizar e-mail e mapear `IntegrityError` em 409; Etapa 5 — validar `valor_entrada` da opção ≤ `valor_veiculo` (o banco só confere a entrada da simulação); Etapa 6/7 — amortização sob demanda e decidir o modo "dado o aporte"; Etapa 8 — preencher as taxas do BACEN antes de gravar a simulação.
 
 ## Etapa 3 — Autenticação (registro e login)
@@ -105,7 +106,7 @@ docker run -d --name rota-financeira-db -e POSTGRES_USER -e POSTGRES_PASSWORD -e
 
 **Validado:** scripts descartáveis (campos numéricos 66 verificações, schemas 38, serviço 19), ponta a ponta contra o servidor com dois usuários (36 verificações: isolamento, 401 nas 5 rotas, 24 entradas inválidas em POST e PUT, ids inválidos, exclusão com opções) e Swagger UI conferido por você (criar, listar, abrir, editar, erro 422, excluir 204 e 404).
 **Ajuste em relação ao plano:** o teto do id ficou no serviço (`ID_MAXIMO`), não no conversor `int(max=...)`, que fazia `PUT`/`DELETE` responderem 405.
-**Levado adiante:** Etapa 5 reutiliza `obter_simulacao`, `campo_decimal`/`campo_inteiro` e o padrão de isolamento; Etapa 7 devolve números como número JSON; Etapa 9 mantém o envelope `itens`/`total`.
+**Levado adiante:** Etapa 5 reutiliza `obter_simulacao`, `campo_decimal`/`campo_inteiro` e o padrão de isolamento; Etapa 7 devolve números como número JSON; o envelope `itens`/`total` fica como está (a antiga Etapa 9 foi eliminada).
 
 ## Etapa 5 — CRUD de opções de financiamento
 **Status: concluída em 2026-09-25** (spec: `docs/specs/2026-09-25-opcoes-financiamento.md`).
@@ -153,32 +154,30 @@ Pacote **puro** (só biblioteca padrão; verificado no código-fonte por teste),
 **Levado adiante:** Etapa 8 — as taxas sugeridas do BACEN alimentam o **formulário**/criação da simulação (o `/resultado` sempre usa as taxas gravadas); Etapa 10 — testes de integração das duas rotas no `pytest`; Etapa 12 — rotas e contrato do resultado no README.
 
 ## Etapa 8 — Integração com o BACEN/SGS, cache e índices
-**Arquivos:** `app/integrations/bacen.py`, `app/services/indices.py`, `app/routes/indices.py`
+**Status: concluída em 2026-09-25** (spec: `docs/specs/2026-09-25-indices-bacen.md`).
+**Arquivos:** `app/integrations/bacen.py`, `app/services/indices.py`, `app/schemas/indices.py`, `app/routes/indices.py`, `app/__init__.py` (schema `IndiceEconomico` e texto R8 do Swagger), `config.py`, `.env.example`, `tests/integrations/{test_bacen.py,test_bacen_http.py,servidor_falso.py}`
 
-- [ ] Cliente `requests` para `https://api.bcb.gov.br/dados/serie/bcdata.sgs.<n>/dados?formato=json`, com timeout e tratamento de erro. Confirmar os códigos das séries de Selic, CDI e IPCA na documentação do SGS.
-- [ ] Gravar em `indices_economicos_cache` e servir por `GET /api/indices/{selic|ipca|cdi}?periodo=...`.
-- [ ] Definir a política de expiração do cache (ex.: consulta o BACEN só se o dado estiver defasado).
-- [ ] BACEN fora do ar: servir o cache; sem cache, devolver 502/503 com mensagem clara.
-- [ ] Os índices são taxas **sugeridas**: o cliente pode enviar outros valores ao criar a simulação; se preferir a sugestão, a API busca no cache e **grava a taxa na simulação** (as colunas são `NOT NULL`).
-- [ ] Opcional: atualização agendada com APScheduler.
+- [x] Cliente `requests` (`integrations/bacen.py`, sem Flask nem banco): timeout, janela de no máximo 10 anos, interpretação estrita da resposta (uma linha inválida invalida tudo; datas futuras ignoradas; HTTP 404 "Value(s) not found" = sem dados), e `BacenIndisponivel` com mensagem genérica (o motivo real só vai para o log, sem URL nem corpo).
+- [x] **Só CDI e IPCA — a Selic ficou de fora por decisão do autor:** **CDI = série 4389** (CDI anualizada base 252, % a.a.) e **IPCA = série 13522** (acumulado em 12 meses, % a.a.), sem conversão de unidade. A sugestão de IPCA é o acumulado **realizado** (o SGS não tem projeção). `GET /api/indices/{cdi|ipca}?periodo=` (JWT); `selic`, `CDI` maiúsculo e qualquer outro → 404 "Índice não encontrado". O valor `SELIC` do enum/CHECK do banco fica reservado, sem uso.
+- [x] **Contrato:** `indice`, `descricao`, `unidade`, `serie_sgs`, `sugestao` (`valor`, `data_referencia`: o mais recente até hoje), `periodo` (`inicio`, `fim`), `pontos` (crescentes, sem datas futuras), `atualizado_em`, `desatualizado`. `periodo` aceita `1m|3m|6m|12m|24m|60m` (padrão `12m`), outro → 422; só filtra o cache.
+- [x] **Cache:** sob demanda, **TTL de 12 h**, **janela fixa de 60 meses**, `INSERT ... ON CONFLICT DO UPDATE` (a restrição única segura a corrida); sem agendador (APScheduler continua fora).
+- [x] **BACEN fora do ar:** com cache → 200 com `desatualizado: true`; sem cache → **503** "Dados do Banco Central indisponíveis no momento". Sem nova tentativa automática.
+- [x] **Configuração opcional por ambiente:** `BACEN_URL_BASE`, `BACEN_TIMEOUT_SEGUNDOS` (8), `INDICES_TTL_HORAS` (12); valor inválido derruba a subida.
+- [x] **Decisão 11 da Etapa 2 descartada:** a API **não** grava taxa sugerida quando omitida; as taxas seguem obrigatórias no `POST`/`PUT` da simulação, que não depende do BACEN. O frontend pré-preenche o formulário com `sugestao.valor`.
+- [x] Swagger: rota com contrato, erros (inclusive 503) e texto da API externa (R8: fonte, sem cadastro, rotas usadas, consumo pelo backend; licença ODbL confirmada no catálogo do portal para outras séries do SGS, mas **não** listada individualmente para 4389/13522 — o texto não afirma além disso).
 
-**Validar:** chamar o endpoint com rede ativa (grava no cache); repetir (serve do cache); simular falha do BACEN (URL inválida) e conferir a resposta.
+**Validado:** 617 testes no `pytest` (62 novos: interpretação com payloads reais, servidor HTTP falso local); scripts descartáveis (cache 32, consulta 33, schema 23); ponta a ponta com o servidor falso (62 verificações: cache, TTL real, 8 modos de falha com e sem cache, timeout, datas futuras, 8 requisições simultâneas, 401/404/422, log sem Traceback); conferência com a **API real** (sugestão e todas as linhas iguais a um `curl` direto: CDI 1.255 linhas, IPCA 60; segunda chamada sem rede); Swagger UI conferido por você; regressão das Etapas 1 a 7 verde, `flask db migrate` sem mudanças, `requirements.txt` inalterado.
+**Levado adiante:** Etapa 10 — testes de integração da rota `/api/indices/*` com o servidor falso (`tests/integrations/servidor_falso.py`) e o contrato sem `selic`; Etapa 11 — conferir na imagem os dados de fuso (`tzdata`, exigidos pelo `zoneinfo` que calcula "hoje" em `America/Sao_Paulo`) e as variáveis do BACEN; Etapa 12 — seção da API externa (R8) no README.
 
-## Etapa 9 — Extras de criatividade (R4)
-**Arquivos:** `app/routes/simulacoes.py`, `app/schemas/`, possivelmente `app/services/cet.py`
-
-- [ ] Paginação em `GET /api/simulacoes` (`pagina`, `por_pagina`) com metadados na resposta: **manter o envelope** `{"itens", "total"}` da Etapa 4 e só acrescentar `pagina`, `por_pagina`, `total_paginas`.
-- [ ] Ordenação (`ordenar_por`, `ordem`) e filtros (ex.: por nome, faixa de valor).
-- [ ] Opcional: cálculo do CET (Custo Efetivo Total) por opção de financiamento.
-- [ ] Documentar todos os parâmetros no Swagger.
-
-**Validar:** requisições com várias combinações de parâmetros; limites e valores inválidos devolvem 400/422.
+## Etapa 9 — ~~Extras de criatividade~~ (eliminada)
+**Status: eliminada em 2026-09-25, por decisão do autor.** Paginação, ordenação, filtros e CET **não serão implementados**. A numeração das demais etapas foi mantida (as specs e o `CLAUDE.md` se referem a elas). O **R4** ("funcionalidades extras além do CRUD básico, ex.: autenticação, ordenação, filtros, paginação") fica atendido pelos extras já entregues: **autenticação JWT** com isolamento por usuário (Etapa 3), cálculo dos 3 cenários com séries e `/parcelas` (Etapa 7) e índices do BACEN com cache (Etapa 8). `GET /api/simulacoes` permanece como está: envelope `{"itens", "total"}`, mais recentes primeiro, sem parâmetros.
 
 ## Etapa 10 — Swagger completo e testes de integração
 **Arquivos:** todas as rotas, `tests/api/`
 
 - [ ] Revisar as docstrings Flasgger de **todas** as rotas: parâmetros, corpos de exemplo, respostas de erro, `security`.
 - [ ] Testes de integração com o `test_client` do Flask e banco de teste separado, no mesmo `pytest` da Etapa 6 (`requirements-dev.txt`, `pytest.ini`), incluindo `/parcelas` e `/resultado` (números do exemplo da spec da Etapa 7, séries com `null`, modo `aporte_mensal`): fluxo registrar → login → criar simulação → adicionar financiamentos → resultado; isolamento entre usuários; erros 401/404/409.
+- [ ] Testes de integração de `GET /api/indices/{cdi|ipca}` com o **servidor falso** de `tests/integrations/servidor_falso.py` (apontado por `BACEN_URL_BASE`): cache, TTL, `desatualizado`, 503, 401, 404 (`selic` inclusive) e 422 do `periodo`. Sem `selic` no contrato.
 - [ ] Conferir a política de CORS com a origem do frontend.
 
 **Validar:** `pytest` completo verde; percorrer `/apidocs/` executando cada rota.
@@ -189,6 +188,7 @@ Pacote **puro** (só biblioteca padrão; verificado no código-fonte por teste),
 - [ ] `Dockerfile` do backend: imagem Python slim, instala **só** `requirements.txt` (o `pytest` fica em `requirements-dev.txt`), roda com `gunicorn`, expõe a porta e lê a configuração por variáveis de ambiente.
 - [ ] Se for usar compose: serviços `api` + `db` (Postgres) com volume e `depends_on`.
 - [ ] Definir como as migrations rodam no container (`flask db upgrade` no start).
+- [ ] Conferir que a imagem tem os dados de fuso (`tzdata`/`zoneinfo` para `America/Sao_Paulo`, usados pelos índices) e documentar as variáveis opcionais do BACEN (`BACEN_URL_BASE`, `BACEN_TIMEOUT_SEGUNDOS`, `INDICES_TTL_HORAS`).
 
 **Validar:** `docker build` e `docker run` (ou `docker compose up`) sobem a API; `/apidocs/` abre; um fluxo completo funciona no container.
 
@@ -197,7 +197,7 @@ Pacote **puro** (só biblioteca padrão; verificado no código-fonte por teste),
 
 - [ ] Reescrever o README (o atual é do projeto `manutencao-api`): título, descrição, instalação local, variáveis de ambiente, migrations, execução, execução com Docker.
 - [ ] **Fluxograma da arquitetura** em imagem, ilustrando um cenário (ex.: Frontend → API Flask → PostgreSQL / BACEN).
-- [ ] Seção da **API externa** (R8): BACEN/SGS, licença, ausência de cadastro e rotas usadas.
+- [ ] Seção da **API externa** (R8): BACEN/SGS, licença, ausência de cadastro e rotas usadas (séries 4389 e 13522; só CDI e IPCA; ver o texto já escrito no Swagger).
 - [ ] Tabela das rotas da API (incluindo simulações, financiamentos, `/parcelas` e `/resultado`), o contrato do resultado (custo total, `menor_custo`, séries e `null`, modo `aporte_mensal`) e link para `/apidocs/`.
 
 **Validar:** seguir o README do zero em uma pasta limpa e conseguir subir a aplicação.
@@ -220,6 +220,6 @@ Pacote **puro** (só biblioteca padrão; verificado no código-fonte por teste),
 ## Decisões em aberto (resolver nas specs)
 - Limite de opções por simulação e expiração do JWT (etapas 3 e 5).
 - Convenção de arredondamento e caso de taxa zero (etapa 6).
-- Política de expiração do cache do BACEN (etapa 8).
-- Escopo de paginação, ordenação e filtros; se o CET entra (etapa 9).
+- ~~Política de expiração do cache do BACEN (etapa 8)~~ — resolvida: TTL de 12 h, janela de 60 meses.
+- ~~Escopo de paginação, ordenação e filtros; se o CET entra (etapa 9)~~ — resolvida: nada disso será implementado.
 - Dockerfile isolado ou docker-compose com Postgres (etapa 11).
