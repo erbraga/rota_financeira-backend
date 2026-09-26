@@ -47,9 +47,28 @@ SWAGGER_TEMPLATE = {
             "meses, % a.a.).\n"
             "- **Uso:** as respostas ficam em cache no banco (renovado a cada 12 h, janela de 60 "
             "meses); se o BACEN estiver fora do ar, a API serve o cache marcado como "
-            "desatualizado."
+            "desatualizado.\n\n"
+            "### Convenções da API\n"
+            "- **Autenticação:** as rotas protegidas exigem `Authorization: Bearer <token>` (o "
+            "token vem de `POST /api/auth/login` e vale 60 minutos por padrão). Sem token, com "
+            "token inválido ou expirado: **401**.\n"
+            "- **Erros:** sempre JSON, `{\"erro\": \"mensagem\"}`, com `detalhes` (mensagens por "
+            "campo) nos erros de validação (**422**). Um recurso de outro usuário responde **404**, "
+            "igual a um que não existe.\n"
+            "- **Erro interno (500):** falha inesperada do servidor; a resposta é sempre "
+            "`{\"erro\": \"Erro interno do servidor\"}`, sem detalhes técnicos (o motivo fica só "
+            "no log do servidor).\n"
+            "- **Números:** valores monetários e taxas saem como número JSON; as taxas são "
+            "percentuais (`12.5` = 12,5 %); o `DELETE` responde **204** sem corpo."
         ),
     },
+    "tags": [
+        {"name": "Saúde", "description": "Verificação da API e do banco de dados (pública)."},
+        {"name": "Autenticação", "description": "Registro, login e dados do usuário logado."},
+        {"name": "Simulações", "description": "Simulações de compra do usuário e o resultado comparativo dos três cenários."},
+        {"name": "Financiamentos", "description": "Opções de financiamento (até 3 por simulação) e suas tabelas de parcelas."},
+        {"name": "Índices", "description": "Taxas sugeridas do Banco Central (CDI e IPCA), com cache."},
+    ],
     "components": {
         "securitySchemes": {
             "BearerAuth": {
@@ -587,7 +606,12 @@ def create_app(config=None):
     origens = app.config["CORS_ORIGINS"]
     if not origens:
         app.logger.warning("CORS_ORIGINS vazio: nenhuma origem externa está liberada.")
-    CORS(app, resources={r"/api/*": {"origins": origens}})
+    CORS(
+        app,
+        resources={r"/api/.*": {"origins": origens}},
+        expose_headers=["Location"],
+        max_age=600,
+    )
 
     Swagger(app, config=SWAGGER_CONFIG, template=SWAGGER_TEMPLATE)
 

@@ -42,6 +42,7 @@ def criar(simulacao_id):
       - name: simulacao_id
         in: path
         required: true
+        description: Identificador da simulação (inteiro positivo). Se for de outro usuário ou não existir, a resposta é 404.
         schema:
           type: integer
         example: 1
@@ -139,6 +140,7 @@ def listar(simulacao_id):
       - name: simulacao_id
         in: path
         required: true
+        description: Identificador da simulação (inteiro positivo). Se for de outro usuário ou não existir, a resposta é 404.
         schema:
           type: integer
         example: 1
@@ -187,12 +189,14 @@ def atualizar(simulacao_id, financiamento_id):
       - name: simulacao_id
         in: path
         required: true
+        description: Identificador da simulação (inteiro positivo). Se for de outro usuário ou não existir, a resposta é 404.
         schema:
           type: integer
         example: 1
       - name: financiamento_id
         in: path
         required: true
+        description: Identificador da opção de financiamento (inteiro positivo). Se for de outra simulação ou não existir, a resposta é 404.
         schema:
           type: integer
         example: 1
@@ -266,12 +270,14 @@ def excluir(simulacao_id, financiamento_id):
       - name: simulacao_id
         in: path
         required: true
+        description: Identificador da simulação (inteiro positivo). Se for de outro usuário ou não existir, a resposta é 404.
         schema:
           type: integer
         example: 1
       - name: financiamento_id
         in: path
         required: true
+        description: Identificador da opção de financiamento (inteiro positivo). Se for de outra simulação ou não existir, a resposta é 404.
         schema:
           type: integer
         example: 1
@@ -320,12 +326,14 @@ def parcelas(simulacao_id, financiamento_id):
       - name: simulacao_id
         in: path
         required: true
+        description: Identificador da simulação (inteiro positivo). Se for de outro usuário ou não existir, a resposta é 404.
         schema:
           type: integer
         example: 1
       - name: financiamento_id
         in: path
         required: true
+        description: Identificador da opção de financiamento (inteiro positivo). Se for de outra simulação ou não existir, a resposta é 404.
         schema:
           type: integer
         example: 1

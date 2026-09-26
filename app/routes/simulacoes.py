@@ -138,6 +138,7 @@ def obter(simulacao_id):
       - name: simulacao_id
         in: path
         required: true
+        description: Identificador da simulação (inteiro positivo). Se for de outro usuário ou não existir, a resposta é 404.
         schema:
           type: integer
         example: 1
@@ -185,6 +186,7 @@ def atualizar(simulacao_id):
       - name: simulacao_id
         in: path
         required: true
+        description: Identificador da simulação (inteiro positivo). Se for de outro usuário ou não existir, a resposta é 404.
         schema:
           type: integer
         example: 1
@@ -257,6 +259,7 @@ def excluir(simulacao_id):
       - name: simulacao_id
         in: path
         required: true
+        description: Identificador da simulação (inteiro positivo). Se for de outro usuário ou não existir, a resposta é 404.
         schema:
           type: integer
         example: 1
@@ -311,6 +314,7 @@ def resultado(simulacao_id):
       - name: simulacao_id
         in: path
         required: true
+        description: Identificador da simulação (inteiro positivo). Se for de outro usuário ou não existir, a resposta é 404.
         schema:
           type: integer
         example: 1
@@ -347,7 +351,7 @@ def resultado(simulacao_id):
             example:
               erro: Simulação não encontrada
       422:
-        description: Parâmetro inválido (aporte_mensal fora da faixa, com casas em excesso, repetido ou desconhecido).
+        description: Parâmetro inválido (aporte_mensal vazio, não numérico, fora da faixa, com casas em excesso ou repetido; ou parâmetro desconhecido).
         content:
           application/json:
             schema:
