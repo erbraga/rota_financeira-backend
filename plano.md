@@ -210,14 +210,30 @@ Pacote **puro** (só biblioteca padrão; verificado no código-fonte por teste),
 
 **Validado:** tabela de rotas × `/apispec.json` (as mesmas 16, com a autenticação), variáveis × `config.py`/`.env.example`/`.env.docker.example` (nenhuma falta ou sobra), versões × `requirements.txt`, links e âncoras, títulos, tabelas e blocos de código; **execução literal do README do zero** numa cópia limpa: caminho local (venv, `pip install`, `.env`, PostgreSQL em contêiner, migrations, `flask run`, fluxo curto com o BACEN real, os 1055 testes) e caminho Docker (build, rede, `.env.docker`, `docker run`, fluxo curto, limpeza que o README ensina); sem segredos no README, no PNG e no SVG; 1055 testes e `flask db migrate` sem mudanças; leitura sua do README e da imagem.
 **Achados corrigidos no texto:** `gunicorn run:app` escuta na porta **8000** (não na 5000); a linha comentada `TEST_DATABASE_URL` do `.env.example` também tem o marcador `troque-esta-senha`.
-**Levado adiante:** Etapa 13 — o repositório do **frontend** (`github.com/erbraga/rota_financeira-frontend`, link do README) respondeu **404 anônimo** em 2026-09-26 (privado ou ainda não publicado): torná-lo **público** e conferir que o link abre (R10).
 
 ## Etapa 13 — Revisão final e entrega (R10)
-- [ ] Conferir o checklist R1 a R10 do `CLAUDE.md` e atualizar a lista.
-- [ ] Nomes de arquivos em `snake_case`, estrutura de pastas conforme a proposta, sem código morto.
-- [ ] Nenhum segredo commitado; `.env.example` atualizado.
-- [ ] Remover do `requirements.txt` o que não for usado; atualizar o `CLAUDE.md` com o estado final.
+**Status: concluída em 2026-09-26** (spec: `docs/specs/2026-09-26-revisao-final-e-entrega.md`); a verificação a partir do GitHub (clone anônimo) está no relatório da entrega.
+**Arquivos:** `proposta-backend-api-rest.md` (reescrita), `app/schemas/resultado.py`, `app/integrations/bacen.py`, `tests/integrations/servidor_falso.py`, `tests/api/test_openapi.py` (imports sem uso), `README.md` (nota de licença)
 
+- [x] **Checklist R1 a R10 conferido de novo, com evidência executada** (tabela abaixo).
+- [x] **Proposta do backend reescrita** para refletir o projeto final (CDI e IPCA, sem Selic nem FIPE, sem `parcelas_calculadas`, Marshmallow, sem APScheduler, as 16 rotas, tipos e regras reais, débitos conhecidos, "Etapas realizadas"): rotas × `/apispec.json` e colunas × models conferidos por script; o texto original fica no histórico do git.
+- [x] **Código morto:** removidos 5 imports sem uso (2 em `app/`, 3 em `tests/`); varredura AST em todo o repositório sem achados (os de `TYPE_CHECKING` são legítimos).
+- [x] **Nomes e estrutura:** todo `.py` em `snake_case`; árvore conforme a proposta; `tmp/`, `.env`, `.env.docker`, `CLAUDE.md`, `.claude/` e `requisitos back-end.md` fora do git. Nomes com hífen só em documentos e arquivos convencionais (mantidos por decisão).
+- [x] **Segredos:** histórico do git limpo (nenhum `.env`/chave/senha real em qualquer commit); `.env.example` e `.env.docker.example` só com marcadores. **Dependências:** as 11 do `requirements.txt` em uso; nada a remover.
+- [x] **Decisões:** sem arquivo `LICENSE` (o README diz que não há licença de reuso definida); sem tag nem branch de entrega (a versão entregue é o commit final da `main`); sem menção ao Claude Code no README. O repositório do **frontend** é outro módulo e ficou **fora do escopo**.
+
+| Req. | Situação | Evidência (executada na Etapa 13) |
+|---|---|---|
+| R1 / R5 | atendido | 16 operações no `/apispec.json` (8 GET, 4 POST, 2 PUT, 2 DELETE), Swagger em `/apidocs/` (200) |
+| R2 | atendido | `README.md` (11 seções) e `docs/img/arquitetura.{dot,png,svg}`; README executado do zero (Etapa 12) |
+| R3 | atendido | `docker build` sem aviso; usuário `app` (uid 10001); sem `tests`, `docs`, `.env*` nem `pytest` na imagem |
+| R4 | atendido | JWT com isolamento, `/resultado`, `/parcelas` e índices: 173 testes de API passando |
+| R7 | atendido | BACEN/SGS (séries 4389 e 13522) respondendo 200 |
+| R8 | atendido | README e Swagger com o mesmo texto (fonte, sem cadastro, licença com a ressalva, rotas, consumo pelo backend) |
+| R10 | atendido | backend público, estrutura e nomes conferidos; repositório do frontend fora do escopo |
+
+**Validado:** 1055 testes, `flask db migrate` sem mudanças, `pip check`, `requirements*` inalterados; a varredura de segredos no histórico e na árvore.
+**Achado corrigido:** uma string de exemplo de um teste (`tests/api/test_openapi.py`) e as senhas fictícias de usuários dos testes coincidiam com a **senha de desenvolvimento do banco** (3 caracteres, publicada no commit da Etapa 10). Os testes passaram a usar valores neutros (varredura da senha como palavra isolada: 0 ocorrências) e a senha do PostgreSQL local **deve ser trocada pelo autor** (o valor antigo continua no histórico público do git; ao ser trocada, deixa de valer). Lição: a varredura de segredos inclui a senha de desenvolvimento, mesmo curta.
 
 ---
 
@@ -225,7 +241,6 @@ Pacote **puro** (só biblioteca padrão; verificado no código-fonte por teste),
 - **Precisão financeira:** usar `Decimal` de ponta a ponta; conferir os resultados contra uma planilha.
 - **Contrato com o frontend:** definir o JSON de `/resultado` na etapa 7 e evitar mudanças depois; qualquer mudança precisa ser avisada ao outro módulo.
 - **Dependência do BACEN:** os cálculos não podem depender dele em tempo de requisição; só as sugestões de taxa dependem.
-- **R7:** o enunciado cita BrasilAPI/FIPE, mas o projeto decidiu atender com o BACEN/SGS — confirmar isso com o professor antes da entrega.
 
 ## Decisões em aberto (resolver nas specs)
 - Limite de opções por simulação e expiração do JWT (etapas 3 e 5).

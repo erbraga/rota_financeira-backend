@@ -2,35 +2,39 @@
 
 **Projeto:** Comparador de Cenários para Compra de Carros
 **Parte:** Backend, API REST em Flask + PostgreSQL
-**Parte complementar:** [Frontend (SPA React)](proposta-frontend-spa-react.md)
+**Parte complementar:** Frontend (SPA React), em outro repositório: https://github.com/erbraga/rota_financeira-frontend
+
+> Este documento foi **atualizado em 2026-09-26 para refletir o projeto entregue**. A proposta original (com a Selic, a tabela FIPE, a tabela
+> `parcelas_calculadas`, o APScheduler e a escolha entre Marshmallow e Pydantic) continua disponível no histórico do git. O passo a passo de
+> instalação e execução está no [README](README.md) e a decisão de cada etapa, em [`docs/specs/`](docs/specs/) e no [`plano.md`](plano.md).
 
 ## 1. Contexto do projeto
 
 O projeto é uma aplicação web que ajuda o usuário a decidir **como comprar um carro**. Ela compara três cenários financeiros com dados econômicos reais do Banco Central:
 
 1. Compra à vista.
-2. Compra financiada, com 2 ou 3 opções de financiamento.
+2. Compra financiada, com até 3 opções de financiamento.
 3. Compra à vista no futuro, acumulando o valor em um fundo de investimento.
 
-Quem vai comprar um carro costuma comparar só o valor da parcela. Ele deixa de considerar o custo total dos juros, a alta do preço do carro (inflação) enquanto junta dinheiro e o rendimento do dinheiro guardado. A aplicação reúne esses cálculos em um só lugar e usa taxas reais (Selic, CDI e IPCA) de uma fonte oficial.
+Quem vai comprar um carro costuma comparar só o valor da parcela. Ele deixa de considerar o custo total dos juros, a alta do preço do carro (inflação) enquanto junta dinheiro e o rendimento do dinheiro guardado. A aplicação reúne esses cálculos em um só lugar e usa taxas reais (CDI e IPCA) de uma fonte oficial.
 
 ### 1.1 Decisão de arquitetura
 
 O sistema é implementado em **duas partes independentes**, que se comunicam apenas por HTTP/JSON:
 
-| Parte | Responsabilidade | Documento |
+| Parte | Responsabilidade | Repositório |
 |---|---|---|
-| **Backend (este documento)** | Regras de negócio, cálculos financeiros, persistência, autenticação, integração com o BACEN | `proposta-backend-api-rest.md` |
-| **Frontend** | Interface do usuário (SPA), formulários, gráficos e consumo da API | `proposta-frontend-spa-react.md` |
+| **Backend (este documento)** | Regras de negócio, cálculos financeiros, persistência, autenticação, integração com o BACEN | https://github.com/erbraga/rota_financeira-backend |
+| **Frontend** | Interface do usuário (SPA), formulários, gráficos e consumo da API | https://github.com/erbraga/rota_financeira-frontend |
 
-O backend não conhece o frontend e pode ser testado, documentado e evoluído sozinho, pelo Swagger. O **contrato entre as duas partes é a especificação OpenAPI** gerada pelo Flasgger, com os endpoints da seção 7.
+O backend não conhece o frontend e pode ser testado, documentado e evoluído sozinho, pelo Swagger. O **contrato entre as duas partes é a especificação OpenAPI** gerada pelo Flasgger (`/apidocs/` e `/apispec.json`), com os endpoints da seção 7.
 
 ## 2. Objetivos do backend
 
 - Expor uma API REST completa para autenticação, simulações, opções de financiamento e índices econômicos.
 - Implementar o cálculo de financiamento pelos sistemas **Price** e **SAC**, com tabela de amortização mês a mês.
 - Projetar o preço futuro do veículo com correção pelo **IPCA**.
-- Simular o fundo de acumulação com aportes mensais e rendimento (CDI, Selic ou taxa informada).
+- Simular o fundo de acumulação com aportes mensais e rendimento (taxa informada pelo usuário, com o CDI como valor sugerido).
 - Integrar a API SGS do Banco Central e manter um cache local dos índices.
 - Persistir simulações por usuário e permitir revisitá-las.
 - Documentar e permitir testar a API com Swagger (Flasgger).
@@ -39,175 +43,184 @@ O backend não conhece o frontend e pode ser testado, documentado e evoluído so
 
 ### 3.1 Incluído
 
-- Cadastro e login de usuários (JWT).
-- CRUD de simulações e das opções de financiamento de cada uma.
-- Parâmetros personalizáveis: valor do veículo, entrada, taxa de juros, prazo, sistema de amortização, taxa do fundo e prazo para acumulação.
-- Cálculo dos três cenários e endpoint de resultado comparativo.
-- Endpoints de índices econômicos (Selic, CDI, IPCA) com cache.
-- Documentação interativa da API.
+- Cadastro e login de usuários (JWT), com o isolamento dos dados por usuário.
+- CRUD de simulações e das opções de financiamento de cada uma (até 3 por simulação).
+- Parâmetros personalizáveis: valor do veículo (sempre informado pelo usuário), entrada, taxa de juros, prazo, sistema de amortização, taxa do fundo e prazo para acumulação.
+- Cálculo dos três cenários e endpoint de resultado comparativo, com as séries mês a mês, e a tabela de parcelas de cada opção.
+- Endpoints de índices econômicos (CDI e IPCA) com cache.
+- Documentação interativa da API, testes automatizados e execução em contêiner Docker.
 
-### 3.2 Opcional, se houver tempo
+### 3.2 Fora do escopo entregue
 
-- 
 - Cálculo do CET (Custo Efetivo Total).
-- 
+- Paginação, ordenação e filtros nas listagens.
+- A Selic e a consulta ao preço do veículo em tabela externa (FIPE ou similar).
+- Limitação de tentativas (*rate limiting*) no login e no registro, e atualização agendada do cache (o cache é atualizado sob demanda).
 
 ## 4. Lógica de cálculo
 
-A lógica de negócio fica na camada de **serviços**, separada das rotas HTTP.
+A lógica de negócio fica na camada de **serviços**, separada das rotas HTTP, em um pacote de **cálculo puro** (`app/services/calculo/`: só biblioteca padrão e `Decimal`, sem Flask nem banco).
 
 | Cenário | Cálculo |
 |---|---|
 | **À vista (corrigido)** | `valor_veiculo × (1 + taxa_ipca)^(prazo_meses/12)`: preço do carro no momento em que o fundo completaria o valor. |
-| **Financiamento** | **Price:** parcelas fixas. **SAC:** amortização constante e parcelas decrescentes. Gera a tabela mês a mês com parcela, juros, amortização e saldo devedor, e o custo total (entrada + soma das parcelas). |
-| **Fundo de acumulação** | Aportes mensais fixos rendendo à taxa do fundo. Dado o prazo, calcula quanto aportar por mês. Dado o aporte, calcula quanto tempo leva para atingir o valor à vista corrigido. |
+| **Financiamento** | **Price:** parcelas fixas. **SAC:** amortização constante e parcelas decrescentes. Gera a tabela mês a mês com parcela, juros, amortização e saldo devedor (o saldo **após** o pagamento). Juros e parcela são arredondados ao centavo a cada mês e a **última parcela absorve o resíduo**. O custo total é a entrada da opção mais a soma das parcelas. |
+| **Fundo de acumulação** | Aportes mensais fixos, **ao fim de cada mês**, rendendo à taxa do fundo (convertida de anual para mensal de forma composta). O `valor_entrada` da simulação é o **capital inicial** do fundo. Dado o prazo, calcula o **menor aporte** (arredondado para cima, ao centavo) que atinge o preço corrigido. Dado o aporte (`?aporte_mensal=`), calcula em que mês o saldo alcança o preço daquele mês (busca até 60 meses). |
+
+Convenções: todo cálculo usa `Decimal` (nunca `float` para dinheiro), taxas entram em **percentual** e são convertidas em um único ponto, e o custo de cada cenário é comparado em **valores nominais** (sem valor presente). O `custo_total` de cada cenário é **o que se paga pelo carro**: à vista, o valor do veículo; financiamento, a entrada mais as parcelas; fundo, o preço corrigido pelo IPCA na data da compra. Em caso de empate no menor custo, vale a ordem à vista, financiamentos e fundo.
 
 ## 5. Integração com API pública
 
-- **Banco Central (SGS):** API REST gratuita, sem autenticação, com séries temporais. O exemplo é o CDI (série 12):
+- **Banco Central (SGS):** API REST gratuita, sem cadastro nem autenticação, com séries temporais. São usadas duas séries:
 
   ```
-  https://api.bcb.gov.br/dados/serie/bcdata.sgs.12/dados?formato=json
+  CDI  (série 4389, CDI anualizada base 252, % a.a.):
+  https://api.bcb.gov.br/dados/serie/bcdata.sgs.4389/dados?formato=json
+  IPCA (série 13522, IPCA acumulado em 12 meses, % a.a.):
+  https://api.bcb.gov.br/dados/serie/bcdata.sgs.13522/dados?formato=json
   ```
 
-- O backend consulta a API, grava o resultado na tabela `indices_economicos_cache` e serve o cliente por endpoints internos. Assim a aplicação não depende da disponibilidade do BACEN a cada acesso.
-- Os valores retornados são taxas **sugeridas**. O cliente pode enviar valores diferentes ao criar a simulação.
+- O backend consulta a API, grava o resultado na tabela `indices_economicos_cache` e serve o cliente por endpoints internos. O cache é atualizado **sob demanda**: a API só consulta o BACEN quando o cache está vazio ou tem mais de **12 horas**, e busca uma janela de **60 meses**. Assim a aplicação não depende da disponibilidade do BACEN a cada acesso.
+- Se o BACEN estiver fora do ar (ou demorar mais de 8 segundos), a API responde com o cache existente, marcado com `desatualizado: true`; sem nada em cache, responde **503** com uma mensagem clara. A criação de simulações **não depende** do BACEN.
+- Os valores retornados são taxas **sugeridas** (o SGS não tem projeção de inflação: a sugestão do IPCA é o acumulado em 12 meses do último mês publicado). O cliente pode enviar valores diferentes ao criar a simulação, e as taxas são sempre obrigatórias no corpo.
+- **Licença:** os dados abertos do Banco Central adotam a *Open Data Commons Open Database License (ODbL)*, conforme o catálogo do portal de dados abertos; as séries 4389 e 13522 não são listadas individualmente nesse catálogo, e o uso segue a política de dados abertos do BCB.
 
 ## 6. Modelagem de dados (PostgreSQL)
+
+Todas as colunas são `NOT NULL`. Chaves primárias inteiras autoincrementais (`Identity`). Valores monetários em `NUMERIC(14,2)` e taxas e índices em `NUMERIC(12,6)`, **em percentual** (`12.5` = 12,5 %). O schema é versionado com migrations (Alembic).
 
 ### usuarios
 
 | Campo | Tipo | Observação |
 |---|---|---|
-| id | UUID/serial | PK |
-| nome | varchar | |
-| email | varchar | único |
-| senha_hash | varchar | |
-| criado_em | timestamp | |
+| id | integer | PK |
+| nome | varchar(120) | |
+| email | varchar(254) | único; a aplicação normaliza para minúsculas |
+| senha_hash | varchar(255) | hash scrypt; nunca devolvido |
+| criado_em | timestamp com fuso | padrão `now()` |
 
 ### simulacoes
 
 | Campo | Tipo | Observação |
 |---|---|---|
-| id | UUID/serial | PK |
-| usuario_id | FK → usuarios | |
-| nome | varchar | ex.: "Onix 2026" |
-| valor_veiculo | decimal | preço à vista informado ou obtido da FIPE |
-| valor_entrada | decimal | |
-| taxa_ipca_projetada | decimal | % a.a. para corrigir o preço do carro (pode vir do BACEN) |
-| taxa_fundo_rendimento | decimal | % a.a. usada no cenário de acumulação (CDI, poupança) |
-| prazo_meses_fundo | int | prazo desejado para juntar o valor à vista |
-| criado_em | timestamp | |
+| id | integer | PK |
+| usuario_id | FK → usuarios | `ON DELETE RESTRICT`; o dono vem sempre do token |
+| nome | varchar(120) | ex.: "Onix 2026" |
+| valor_veiculo | numeric(14,2) | preço à vista **informado pelo usuário** (maior que zero) |
+| valor_entrada | numeric(14,2) | de 0 até o valor do veículo; é o capital inicial do fundo |
+| taxa_ipca_projetada | numeric(12,6) | % a.a. para corrigir o preço do carro (a sugestão vem do BACEN) |
+| taxa_fundo_rendimento | numeric(12,6) | % a.a. usada no cenário de acumulação (não negativa) |
+| prazo_meses_fundo | integer | prazo desejado para juntar o valor à vista (maior que zero) |
+| criado_em | timestamp com fuso | |
 
 ### opcoes_financiamento
 
-Cada simulação tem 2 ou 3 opções.
+Cada simulação tem de 0 a 3 opções.
 
 | Campo | Tipo | Observação |
 |---|---|---|
-| id | UUID/serial | PK |
-| simulacao_id | FK → simulacoes | |
-| nome | varchar | ex.: "Banco X 48x" |
-| taxa_juros_mensal | decimal | |
-| prazo_meses | int | |
-| sistema_amortizacao | enum | `PRICE` ou `SAC` |
-| valor_entrada | decimal | pode diferir da entrada do cenário à vista |
+| id | integer | PK |
+| simulacao_id | FK → simulacoes | `ON DELETE RESTRICT` (o ORM apaga as opções junto com a simulação) |
+| nome | varchar(120) | ex.: "Banco X 48x" |
+| taxa_juros_mensal | numeric(12,6) | % a.m. (não negativa) |
+| prazo_meses | integer | maior que zero |
+| sistema_amortizacao | varchar(5) | `PRICE` ou `SAC` (restrição `CHECK`) |
+| valor_entrada | numeric(14,2) | pode diferir da entrada do cenário à vista; menor que o valor do veículo |
 
-### parcelas_calculadas
-
-Opcional: cache do resultado, ou cálculo sob demanda.
-
-| Campo | Tipo | Observação |
-|---|---|---|
-| id | UUID/serial | PK |
-| opcao_financiamento_id | FK | |
-| numero_parcela | int | |
-| valor_parcela | decimal | |
-| valor_juros | decimal | |
-| valor_amortizacao | decimal | |
-| saldo_devedor | decimal | |
+Não há tabela de parcelas: a **tabela de amortização é calculada sob demanda** (`/parcelas`), a partir dos dados da opção.
 
 ### indices_economicos_cache
 
 | Campo | Tipo | Observação |
 |---|---|---|
-| id | serial | PK |
-| indice | varchar | `SELIC`, `CDI` ou `IPCA` |
-| data_referencia | date | |
-| valor | decimal | |
-| atualizado_em | timestamp | |
+| id | integer | PK |
+| indice | varchar(5) | `CDI` ou `IPCA` em uso (`SELIC` existe na restrição `CHECK`, reservado e sem uso) |
+| data_referencia | date | `UNIQUE (indice, data_referencia)` |
+| valor | numeric(12,6) | como publicado pelo BACEN, em percentual |
+| atualizado_em | timestamp com fuso | |
 
 ## 7. Endpoints da API REST
 
-Todas as rotas ficam sob `/api`. Com exceção de `registrar` e `login`, exigem o cabeçalho `Authorization: Bearer <token>`. Cada usuário só acessa as próprias simulações.
+Todas as rotas ficam sob `/api` (16 rotas). Com exceção de `saude`, `registrar` e `login`, exigem o cabeçalho `Authorization: Bearer <token>`. Cada usuário só acessa as próprias simulações: um recurso de outro usuário responde **404**, igual a um que não existe. Erros são sempre JSON (`{"erro": "mensagem"}`, com `detalhes` por campo nos erros de validação).
 
-### 7.1 Autenticação
+### 7.1 Saúde e autenticação
 
 ```
-POST /api/auth/registrar
-POST /api/auth/login
+GET  /api/saude                 # API e banco (público)
+POST /api/auth/registrar        # cria a conta (público)
+POST /api/auth/login            # devolve o token JWT (público)
+GET  /api/auth/perfil           # usuário do token
 ```
 
 ### 7.2 Simulações
 
 ```
 POST   /api/simulacoes                  # cria simulação
-GET    /api/simulacoes                  # lista simulações do usuário logado
+GET    /api/simulacoes                  # lista simulações do usuário logado (envelope itens/total)
 GET    /api/simulacoes/:id              # detalhe da simulação
-PUT    /api/simulacoes/:id              # atualiza parâmetros
-DELETE /api/simulacoes/:id              # remove
-GET    /api/simulacoes/:id/resultado    # três cenários calculados
+PUT    /api/simulacoes/:id              # substitui os parâmetros (corpo completo)
+DELETE /api/simulacoes/:id              # remove (204, junto com as opções)
+GET    /api/simulacoes/:id/resultado    # três cenários calculados (?aporte_mensal= opcional)
 ```
 
 ### 7.3 Opções de financiamento
 
 ```
-POST   /api/simulacoes/:id/financiamentos                  # adiciona opção
+POST   /api/simulacoes/:id/financiamentos                  # adiciona opção (no máximo 3; a 4ª responde 409)
 GET    /api/simulacoes/:id/financiamentos                  # lista opções
-PUT    /api/simulacoes/:id/financiamentos/:fid             # edita
-DELETE /api/simulacoes/:id/financiamentos/:fid             # remove
+PUT    /api/simulacoes/:id/financiamentos/:fid             # substitui a opção
+DELETE /api/simulacoes/:id/financiamentos/:fid             # remove (204)
 GET    /api/simulacoes/:id/financiamentos/:fid/parcelas    # tabela de amortização
 ```
+
+Regras: a entrada da opção é **estritamente menor** que o valor do veículo; editar o valor do veículo para menor ou igual à entrada de uma opção é recusado (422); `sistema_amortizacao` aceita qualquer caixa e devolve maiúsculas.
 
 ### 7.4 Índices econômicos (proxy com cache do BACEN)
 
 ```
-GET /api/indices/selic?periodo=...
-GET /api/indices/ipca?periodo=...
-GET /api/indices/cdi?periodo=...
+GET /api/indices/cdi?periodo=12m
+GET /api/indices/ipca?periodo=12m
 ```
+
+`periodo` aceita `1m`, `3m`, `6m`, `12m`, `24m` e `60m` (padrão `12m`) e só filtra o cache. A resposta traz a **`sugestao`** (o valor mais recente até hoje), os pontos do período, `atualizado_em` e `desatualizado`. Qualquer outro índice (inclusive `selic`) responde 404.
 
 ### 7.5 Documentação e contrato
 
-A resposta de `GET /api/simulacoes/:id/resultado` deve trazer, além dos totais de cada cenário, as **séries mês a mês** que alimentam o gráfico comparativo (saldo devedor, saldo do fundo e custo à vista corrigido). Assim o frontend só exibe os dados e não recalcula nada. O formato exato é definido na especificação OpenAPI e é o que o frontend segue.
+A resposta de `GET /api/simulacoes/:id/resultado` traz, além dos totais de cada cenário, o `menor_custo` e as **séries mês a mês** que alimentam o gráfico comparativo (preço corrigido do carro, saldo do fundo e saldo devedor de cada opção, num eixo comum, com `null` onde uma série já terminou). Assim o frontend só exibe os dados e não recalcula nada. O formato exato é definido na especificação OpenAPI (`/apidocs/`) e é o que o frontend segue.
 
 ## 8. Arquitetura e tecnologias
 
 | Item | Tecnologia |
 |---|---|
+| Linguagem | Python 3.12 |
 | Framework | Flask |
-| ORM e migrations | Flask-SQLAlchemy, Flask-Migrate (Alembic) |
-| Banco de dados | PostgreSQL |
+| ORM e migrations | Flask-SQLAlchemy (SQLAlchemy 2), Flask-Migrate (Alembic) |
+| Banco de dados | PostgreSQL 18 (driver `psycopg`) |
 | Autenticação | Flask-JWT-Extended |
-| Validação e serialização | Marshmallow ou Pydantic |
+| Validação e serialização | Marshmallow 4 (mensagens em português) |
 | Cliente HTTP (BACEN) | requests |
-| CORS | Flask-CORS, liberando a origem do frontend (ex.: `localhost:5173` ou `3000` em desenvolvimento) |
-| Documentação e testes manuais | **Flasgger** (Swagger UI em `/apidocs/`) |
-| Agendamento (opcional) | APScheduler |
+| CORS | Flask-CORS, liberando só as origens do frontend configuradas (ex.: `localhost:5173` ou `3000` em desenvolvimento) |
+| Documentação e testes manuais | **Flasgger** (Swagger UI em `/apidocs/`, OpenAPI 3) |
+| Configuração | variáveis de ambiente (`python-dotenv` lê o `.env` local) |
+| Servidor e empacotamento | gunicorn e Docker (`Dockerfile` da raiz) |
+| Testes | pytest (`requirements-dev.txt`) |
 
 ### 8.1 Estrutura de pastas
 
 ```
-backend/
-  app/
-    models/          # Usuario, Simulacao, OpcaoFinanciamento...
-    routes/          # blueprints: auth, simulacoes, financiamentos, indices
-    services/        # cálculo Price, SAC e fundo
-    schemas/         # validação e serialização
-    integrations/    # cliente da API do BACEN
-  migrations/
-  config.py
-  run.py
+app/
+  models/          # Usuario, Simulacao, OpcaoFinanciamento, IndiceEconomicoCache
+  routes/          # blueprints: saude, auth, simulacoes, financiamentos, indices
+  services/        # regras de aplicação e acesso ao banco
+    calculo/       # cálculo puro: Price, SAC, fundo e composição dos cenários
+  schemas/         # validação e serialização
+  integrations/    # cliente da API do BACEN
+migrations/
+tests/             # calculo/, integrations/ e api/ (integração com o PostgreSQL de teste)
+docs/              # img/ (fluxograma) e specs/ (uma spec por etapa)
+config.py
+run.py
+Dockerfile
 ```
 
 ### 8.2 Documentação com Flasgger
@@ -216,23 +229,32 @@ O Flasgger gera a documentação interativa a partir das docstrings YAML das rot
 
 ## 9. Requisitos não funcionais
 
-- **Segurança:** senhas armazenadas com hash, rotas protegidas por JWT e isolamento dos dados por usuário.
-- **Disponibilidade:** o cache dos índices mantém o sistema funcionando se o BACEN estiver fora do ar.
+- **Segurança:** senhas armazenadas com hash, rotas protegidas por JWT e isolamento dos dados por usuário; nenhum segredo no repositório (variáveis de ambiente). Débito conhecido: não há limitação de tentativas no login e no registro.
+- **Disponibilidade:** o cache dos índices mantém o sistema funcionando se o BACEN estiver fora do ar. Débito conhecido: com o banco fora do ar, as rotas que o usam respondem 500 genérico (só `/api/saude` responde 503).
 - **Manutenibilidade:** cálculo separado das rotas, schema versionado com migrations e API documentada.
-- **Testabilidade:** os serviços de cálculo têm testes unitários e a API pode ser exercitada de forma independente pelo Swagger.
-- **Configuração:** URL do banco, chave JWT e origens permitidas no CORS vêm de variáveis de ambiente.
+- **Testabilidade:** os serviços de cálculo têm testes unitários com referência independente, e a API inteira é coberta por testes de integração contra um PostgreSQL de teste separado.
+- **Portabilidade:** a API roda em um contêiner Docker (imagem de produção, usuário sem privilégios, com verificação de saúde).
+- **Configuração:** URL do banco, chave JWT, origens permitidas no CORS e parâmetros do BACEN vêm de variáveis de ambiente.
 
 ## 10. Resultados esperados
 
 Uma API REST documentada e testável, que autentica usuários, persiste simulações e devolve a comparação entre os três cenários. Ela usa taxas reais do BACEN e calcula Price, SAC e o fundo de acumulação. Qualquer cliente HTTP pode consumi-la, e o frontend React é o primeiro deles.
 
-## 11. Etapas de desenvolvimento (sugestão)
+## 11. Etapas realizadas
 
-Este cronograma é uma sugestão. Ajuste os prazos ao seu calendário.
+O desenvolvimento seguiu etapas, cada uma com spec, plano e validação (ver [`plano.md`](plano.md) e [`docs/specs/`](docs/specs/)):
 
-1. Configuração do projeto (Flask, Postgres, migrations) e modelagem do banco.
-2. Autenticação (registro e login com JWT).
-3. CRUD de simulações e opções de financiamento.
-4. Serviços de cálculo (Price, SAC, fundo) com testes unitários.
-5. Integração com o BACEN, cache de índices e endpoint de resultado.
-6. Documentação Swagger completa, CORS e testes de integração.
+0. Preparação do repositório e do ambiente.
+1. Esqueleto da aplicação Flask com PostgreSQL.
+2. Modelagem de dados e migration inicial.
+3. Autenticação (registro e login com JWT).
+4. CRUD de simulações.
+5. CRUD de opções de financiamento.
+6. Serviços de cálculo (Price, SAC e fundo) com testes unitários.
+7. Tabela de parcelas e endpoint de resultado dos três cenários.
+8. Integração com o BACEN, cache e endpoints de índices (CDI e IPCA).
+9. *(eliminada por decisão do autor)* Extras de criatividade: paginação, ordenação, filtros e CET.
+10. Swagger completo, CORS e testes de integração da API.
+11. Dockerfile.
+12. README com o fluxograma da arquitetura.
+13. Revisão final e entrega.

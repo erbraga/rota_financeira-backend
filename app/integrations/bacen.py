@@ -10,7 +10,7 @@ Sem Flask nem banco. Comportamentos da API real, verificados em 2026-09-25:
 import json
 import logging
 import re
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 import requests

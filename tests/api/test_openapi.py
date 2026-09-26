@@ -6,7 +6,6 @@ uma docstring ser localizado sem abrir o documento.
 import re
 
 import pytest
-from flask import Flask
 
 from app import create_app
 
@@ -188,7 +187,7 @@ def test_erro_interno_devolve_500_generico_sem_detalhes(caplog):
 
     @aplicacao.get("/_explode")
     def explodir():
-        raise RuntimeError("segredo interno que não pode vazar: senha=123")
+        raise RuntimeError("segredo interno que não pode vazar: senha=valor-ficticio-x9")
 
     resposta = aplicacao.test_client().get("/_explode")
     assert resposta.status_code == 500

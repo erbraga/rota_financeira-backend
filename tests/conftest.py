@@ -175,7 +175,7 @@ def criar_usuario(app):
 
     contador = itertools.count(1)
 
-    def _criar(nome="Ana", email=None, senha="senha-da-ana-123"):
+    def _criar(nome="Ana", email=None, senha="senha-da-ana-x9"):
         email = email or f"usuario{next(contador)}@exemplo.com"
         with app.app_context():
             usuario = Usuario(nome=nome, email=email, senha_hash=_hash_da_senha(senha))
@@ -197,12 +197,12 @@ def criar_usuario(app):
 
 @pytest.fixture
 def usuario(criar_usuario):
-    return criar_usuario("Ana", "ana@exemplo.com", "senha-da-ana-123")
+    return criar_usuario("Ana", "ana@exemplo.com", "senha-da-ana-x9")
 
 
 @pytest.fixture
 def outro_usuario(criar_usuario):
-    return criar_usuario("Beto", "beto@exemplo.com", "senha-do-beto-123")
+    return criar_usuario("Beto", "beto@exemplo.com", "senha-do-beto-x9")
 
 
 @pytest.fixture

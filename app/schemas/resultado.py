@@ -4,8 +4,6 @@ Os números saem como número JSON (a conversão de `Decimal` para `float` acont
 saída, como nas Etapas 4 e 5) e `null` é preservado onde uma série terminou ou a meta não foi
 alcançada. As funções `*_para_documento` montam o documento a partir do resultado puro.
 """
-from decimal import Decimal
-
 from marshmallow import Schema, fields
 
 from app.schemas.base import EntradaSchema, campo_decimal

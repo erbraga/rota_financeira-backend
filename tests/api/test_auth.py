@@ -133,7 +133,7 @@ def test_login_ignora_caixa_e_espacos_do_email(client):
 def test_login_401_igual_para_email_inexistente_e_senha_errada(client):
     registrar(client)
     inexistente = login(client, email="ninguem@exemplo.com")
-    errada = login(client, senha="senha-errada-123")
+    errada = login(client, senha="senha-errada-x9")
     assert inexistente.status_code == errada.status_code == 401
     assert inexistente.get_json() == errada.get_json() == {"erro": "Credenciais inválidas"}
 

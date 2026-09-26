@@ -371,3 +371,6 @@ os `pontos` da série (`periodo` aceita `1m`, `3m`, `6m`, `12m`, `24m` e `60m`; 
 
 Projeto acadêmico desenvolvido por [Emerson Range Braga](https://github.com/erbraga) na pós-graduação em Desenvolvimento
 Full Stack da PUC-Rio.
+
+**Licença:** este projeto não define uma licença de reuso do código. A licença ODbL citada na seção
+[API externa](#api-externa-banco-central-sgs) é a dos **dados** do Banco Central, e não a do código deste repositório.
